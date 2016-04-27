@@ -1,0 +1,11 @@
+http://www.pool.ntp.org/en/use.html
+
+0, 1, 2 and 3.pool.ntp.org are names that point to a random set of servers that change every hour.
+
+- Where are the pointing now?
+
+- They recommend ntpdate pool.ntp.org
+
+- Looking up pool.ntp.org "will usually return IP addresses for servers in or close to your country."
+
+"ALERT! Please read the Rules Of Engagement before using these lists. These lists are updated frequently and should not be cached."
