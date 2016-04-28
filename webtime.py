@@ -35,6 +35,8 @@ class WebTime():
         min  = int((dt/60) % 60)
         hour = int(dt / 3600)
         return "{:1}{:02}:{:02}:{:02}".format(sign,hour,min,sec)
+    def __repr__(self):
+        return "<WebTime {} {} {}>".format(self.qhost,self.qtime,self.delta)
 
 def webtime_ip(host,ipaddr):
     import http,socket,email,sys
@@ -94,12 +96,12 @@ def webtime(host):
             print(qhost,ipaddr)
             for i in range(3):
                 w = webtime_ip(qhost, ipaddr)
+                print(w)
                 if not w or w.delta < MIN_TIME:
                     break
                 yield w
 
-def queryhost(vax):
-    (rank,host) = vax
+def queryhost(host):
     for wt in webtime(host):
         print("{:4} {:30} {:20} {:30} {}".format(rank,wt.qhost,wt.qipaddr,wt.ptime(),wt.rdate))
 
@@ -108,22 +110,43 @@ def queryhost(vax):
 if __name__=="__main__":
     #for i in range(10000):
     #    queryhost(45,"blogspot.com")
+    import argparse
+    from bs4 import BeautifulSoup, SoupStrainer
 
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--usg',action='store_true')
+    args = parser.parse_args()
     from multiprocessing import Pool
 
     count = 100
     start = time.time()
     lookups = 0
-    urls = []
-    for line in csv.reader(open("top-1m.csv"),delimiter=','):
-        urls.append(line)
-        if len(urls)>count:
-            break
-    for u in urls: queryhost(u)
+    domains = []
+
+    if args.usg:
+        import urllib, urllib.request
+        page = urllib.request.urlopen("http://usgv6-deploymon.antd.nist.gov/cgi-bin/generate-gov.v4").read()
+        for link in BeautifulSoup(page, "lxml", parse_only=SoupStrainer('a')):
+            try:
+                import urllib
+                o = urllib.parse.urlparse(link.attrs['href'])
+                domains.append(o.netloc)
+            except AttributeError:
+                pass
+
+    if not domains:
+        for line in csv.reader(open("top-1m.csv"),delimiter=','):
+            domains.append(line[1])
+            if len(domains)>count:
+                break
+    print(domains)
+    for u in domains: queryhost(u)
     exit(0)
 
+
     pool = Pool(15)
-    results = pool.map(queryhost,urls)
+    results = pool.map(queryhost, domains)
     end = time.time()
     print("Total lookups: {}  lookups/sec: {}".format(count,count/(end-start)))
     
