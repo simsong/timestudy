@@ -91,9 +91,10 @@ def webtime(host):
             continue
         for r in a:
             ipaddr = r.to_text()
+            print(qhost,ipaddr)
             for i in range(3):
                 w = webtime_ip(qhost, ipaddr)
-                if w.delta < MIN_TIME:
+                if not w or w.delta < MIN_TIME:
                     break
                 yield w
 
