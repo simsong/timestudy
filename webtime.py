@@ -4,8 +4,11 @@
 
 import csv
 import time
+multi = True
+MP=10
+count = 10000
 
-MIN_TIME = 3
+MIN_TIME = 0.001
 
 def ip2long(ip):
     import socket,struct
@@ -79,7 +82,6 @@ def webtime(host):
     import email
     import datetime
     import socket
-    import dns.resolver
     import sys
 
     prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
@@ -88,38 +90,36 @@ def webtime(host):
     for prefix in prefixes:
         qhost = prefix+host
         try:
-            a = dns.resolver.query(qhost,"A")
-        except dns.resolver.NoAnswer:
-            continue
-        for r in a:
-            ipaddr = r.to_text()
-            print(qhost,ipaddr)
+            a = socket.gethostbyname_ex(qhost)
+            ipaddrs = a[2]
+        except socket.gaierror:
+            print("No address for ",qhost)
+            return
+        for ipaddr in ipaddrs:
             for i in range(3):
                 w = webtime_ip(qhost, ipaddr)
-                print(w)
                 if not w or w.delta < MIN_TIME:
                     break
                 yield w
 
 def queryhost(host):
+    import os
     for wt in webtime(host):
-        print("{:4} {:30} {:20} {:30} {}".format(rank,wt.qhost,wt.qipaddr,wt.ptime(),wt.rdate))
+        print(wt.delta,MIN_TIME)
+        if wt.delta > MIN_TIME:
+            print("{:30} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.ptime(),wt.rdate))
 
 
 
 if __name__=="__main__":
-    #for i in range(10000):
-    #    queryhost(45,"blogspot.com")
     import argparse
     from bs4 import BeautifulSoup, SoupStrainer
-
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--usg',action='store_true')
     args = parser.parse_args()
     from multiprocessing import Pool
 
-    count = 100
     start = time.time()
     lookups = 0
     domains = []
@@ -140,13 +140,11 @@ if __name__=="__main__":
             domains.append(line[1])
             if len(domains)>count:
                 break
-    print(domains)
-    for u in domains: queryhost(u)
-    exit(0)
-
-
-    pool = Pool(15)
-    results = pool.map(queryhost, domains)
+    if not multi:
+        for u in domains: queryhost(u)
+    else:
+        pool = Pool(MP)
+        results = pool.map(queryhost, domains)
     end = time.time()
     print("Total lookups: {}  lookups/sec: {}".format(count,count/(end-start)))
     
