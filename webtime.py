@@ -9,6 +9,7 @@ MP=10
 count = 10000
 
 MIN_TIME = 0.001
+CONFIG_INI = "config.ini"
 
 def ip2long(ip):
     import socket,struct
@@ -114,6 +115,28 @@ def queryhost(host):
 if __name__=="__main__":
     import argparse
     from bs4 import BeautifulSoup, SoupStrainer
+    import configparser
+    import pymysql
+
+    config = configparser.ConfigParser()
+    config["mysql"] = {"host":"localhost",
+                       "user":"user",
+                       "passwd":"",
+                       "port":3306,
+                       "db":"timedb"}
+    config.read(CONFIG_INI)
+
+    mysql = config["mysql"]
+
+    try:
+        conn = pymysql.connect(host=mysql["host"],port=int(mysql["port"]),user=mysql["user"],
+                               passwd=mysql['passwd'],db=mysql['db'])
+    except pymysql.err.OperationalError as e:
+        print("Cannot connect to mysqld. host={} user={} passwd={} port={} db={}".format(
+            mysql['host'],mysql['user'],mysql['passwd'],mysql['port'],mysql['db']))
+        raise e
+        exit(1)
+
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--usg',action='store_true')
