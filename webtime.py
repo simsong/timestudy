@@ -118,30 +118,42 @@ if __name__=="__main__":
     import configparser
     import pymysql
 
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--usg',action='store_true')
+    parser.add_arguemnt("--debug",action="store_true",help="write results to STDOUT")
+    parser.add_argument("--mysql",action="store_true",help="output to MySQL DB")
+    parser.add_argument("--mongo",action="store_true",help="output to MongoDB")
+    parser.add_arguemnt("--config",help="config file")
+    args = parser.parse_args()
+
+
+
+    from multiprocessing import Pool
+
+
+
     config = configparser.ConfigParser()
     config["mysql"] = {"host":"localhost",
                        "user":"user",
                        "passwd":"",
                        "port":3306,
                        "db":"timedb"}
-    config.read(CONFIG_INI)
-
-    mysql = config["mysql"]
-
-    try:
-        conn = pymysql.connect(host=mysql["host"],port=int(mysql["port"]),user=mysql["user"],
-                               passwd=mysql['passwd'],db=mysql['db'])
-    except pymysql.err.OperationalError as e:
-        print("Cannot connect to mysqld. host={} user={} passwd={} port={} db={}".format(
-            mysql['host'],mysql['user'],mysql['passwd'],mysql['port'],mysql['db']))
-        raise e
-        exit(1)
+    config.read(args.config)
 
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--usg',action='store_true')
-    args = parser.parse_args()
-    from multiprocessing import Pool
+    if args.mysql:
+        mysql = config["mysql"]
+        try:
+            conn = pymysql.connect(host=mysql["host"],port=int(mysql["port"]),user=mysql["user"],
+                                   passwd=mysql['passwd'],db=mysql['db'])
+        except pymysql.err.OperationalError as e:
+            print("Cannot connect to mysqld. host={} user={} passwd={} port={} db={}".format(
+                mysql['host'],mysql['user'],mysql['passwd'],mysql['port'],mysql['db']))
+            raise e
+            exit(1)
+
+
 
     start = time.time()
     lookups = 0
