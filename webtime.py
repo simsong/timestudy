@@ -4,9 +4,7 @@
 
 import csv
 import time
-multi = True
 MP=10
-count = 10000
 
 MIN_TIME = 0.001
 CONFIG_INI = "config.ini"
@@ -21,13 +19,14 @@ def ip2long(ip):
 
 
 class WebTime():
-    def __init__(self,qhost=None,qtime=None,delta=None,qipaddr=None,rdate=None,code=None):
+    def __init__(self,qhost=None,qipaddr=None,qtime=None,qduration=None,rdate=None,rcode=None,delta=None):
         self.qhost = qhost
-        self.qtime = qtime
-        self.qipaddr = qipaddr
+        self.qipaddr= qipaddr
+        self.qtime  = qtime
+        self.qduration = qduration
         self.rdate  = rdate
-        self.delta = delta
-        self.code  = code
+        self.rcode  = rcode
+        self.delta  = delta
     def ptime(self):
         if self.delta < 0:
             sign = "-"
@@ -65,12 +64,14 @@ def webtime_ip(host,ipaddr):
         return
     except RemoteDisconnected:
         return
-    t = time.time()
+    t0 = time.time()
     val = r.getheader("Date")
+    t1 = time.time()
     if val:
         date = email.utils.parsedate_to_datetime(val)
-        return WebTime(qhost=host,qtime=t,qipaddr=ipaddr,
-                      rdate=val,delta=date.timestamp()-t,code=r.code)
+        qduration = t1-t0
+        return WebTime(qhost=host,qipaddr=ipaddr,qtime=t0+qduration/2,qduration=qduration,
+                       rdate=val,rcode=r.code,delta=date.timestamp()-t)
     else:
         print("No date for {} {}".format(host,ipaddr))
         print(r.getheaders())
@@ -91,14 +92,17 @@ def webtime(host):
     for prefix in prefixes:
         qhost = prefix+host
         try:
+            if args.debug: print("DEBUG qhost={}".format(qhost))
             a = socket.gethostbyname_ex(qhost)
             ipaddrs = a[2]
+            if args.debug: print("DEBUG   qhost={} ipaddrs={}".format(qhost,ipaddrs))
         except socket.gaierror:
             print("No address for ",qhost)
             return
         for ipaddr in ipaddrs:
             for i in range(3):
                 w = webtime_ip(qhost, ipaddr)
+                if args.debug: print("DEBUG   qhost={} ipaddr={:15} w={}".format(qhost,ipaddr,w))
                 if not w or w.delta < MIN_TIME:
                     break
                 yield w
@@ -121,17 +125,13 @@ if __name__=="__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--usg',action='store_true')
-    parser.add_arguemnt("--debug",action="store_true",help="write results to STDOUT")
+    parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--mysql",action="store_true",help="output to MySQL DB")
     parser.add_argument("--mongo",action="store_true",help="output to MongoDB")
-    parser.add_arguemnt("--config",help="config file")
+    parser.add_argument("--config",help="config file",default=CONFIG_INI)
+    parser.add_argument("--threads","-j",type=int,default=1)
+    parser.add_argument("--count",type=int,default=10000,help="The number of domains to count")
     args = parser.parse_args()
-
-
-
-    from multiprocessing import Pool
-
-
 
     config = configparser.ConfigParser()
     config["mysql"] = {"host":"localhost",
@@ -153,12 +153,12 @@ if __name__=="__main__":
             raise e
             exit(1)
 
-
-
-    start = time.time()
     lookups = 0
     domains = []
 
+    #
+    # Get the list of URLs to check
+    #
     if args.usg:
         import urllib, urllib.request
         page = urllib.request.urlopen("http://usgv6-deploymon.antd.nist.gov/cgi-bin/generate-gov.v4").read()
@@ -173,15 +173,20 @@ if __name__=="__main__":
     if not domains:
         for line in csv.reader(open("top-1m.csv"),delimiter=','):
             domains.append(line[1])
-            if len(domains)>count:
+            if len(domains)>args.count:
                 break
-    if not multi:
+
+    # do the study
+
+    start = time.time()
+    if args.threads==1:
         for u in domains: queryhost(u)
     else:
+        from multiprocessing import Pool
         pool = Pool(MP)
         results = pool.map(queryhost, domains)
-    end = time.time()
-    print("Total lookups: {}  lookups/sec: {}".format(count,count/(end-start)))
+    time_end = time.time()
+    print("Total lookups: {}  lookups/sec: {}".format(count,count/(time_end-time_start)))
     
 
         
