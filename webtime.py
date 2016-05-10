@@ -143,7 +143,6 @@ class WebLogger:
             if math.fabs(wt.delta) > args.mintime:
                 if args.verbose: 
                     print("{:30} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.ptime(),wt.rdatetime))
-                print("connected=",self.connected)
                 if self.connected:
                     c = self.mysql_conn.cursor()
                     c.execute("insert into times (host,ipaddr,qdatetime,qduration,rdatetime,delta) values (%s,%s,from_unixtime(%s),%s,%s,%s)",
@@ -193,7 +192,8 @@ if __name__=="__main__":
 
     if args.mysql:
         w.mysql_config = config["mysql"]
-        w.mysql_connect()
+        w.mysql_connect()       # test it out
+        print("MySQL works")
     lookups = 0
     domains = []
 
