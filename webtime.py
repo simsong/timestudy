@@ -266,6 +266,3 @@ if __name__=="__main__":
         c.execute("select count(*) from "+table)
         ct = c.fetchone()[0]
         print("End rows in {}: {}  (+{})".format(table,ct,ct-start_rows[table]))
-    
-
-        
