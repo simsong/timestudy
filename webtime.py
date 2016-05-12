@@ -6,7 +6,7 @@ import os
 import csv
 import time
 
-MIN_TIME = 0.001                # for testing
+MIN_TIME = 0.1                # for testing
 CONFIG_INI = "config.ini"
 
 mysql_schema = """
@@ -120,7 +120,7 @@ class WebLogger:
         t0 = time.time()
 
         if c:
-            c.execute("insert ignore into dated (host,qdate,qfirst) values (%s,date(from_unixtime(%s)),time(from_unixtime(%s)))", (qhost,t0,t0))
+            c.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',date(from_unixtime(%s)),time(from_unixtime(%s)))", (qhost,t0,t0))
             c.execute("select id from dated where host=%s and isnull(ipaddr) and qdate=date(from_unixtime(%s))",
                       (qhost,t0))
             host_id = c.fetchone()
@@ -240,11 +240,12 @@ if __name__=="__main__":
                 if o.netloc: domains.append(o.netloc)
             except AttributeError:
                 pass
+        print("Total USG: {}".format(len(domains)))
 
     if not domains:
         for line in csv.reader(open("top-1m.csv"),delimiter=','):
             domains.append(line[1])
-            if len(domains)>args.count:
+            if len(domains) > args.count:
                 break
 
     # do the study
@@ -255,15 +256,16 @@ if __name__=="__main__":
             w.queryhost(u)
     else:
         from multiprocessing import Pool
-        pool = Pool(args.threads)
+        pool  = Pool(args.threads)
+        dcount = len(domains)
         results = pool.map(w.queryhost, domains)
     time_end = time.time()
     print("Total lookups: {:,}  Total time: {:.0f}  Lookups/sec: {:.2f}".format(
-        args.count,time_end-time_start,args.count/(time_end-time_start)))
+        dcount,time_end-time_start,dcount/(time_end-time_start)))
     for table in ["times","dated"]:
         c.execute("select count(*) from "+table)
-        count = c.fetchone()[0]
-        print("End rows in {}: {}  (+{})".format(table,count,count-start_rows[table]))
+        ct = c.fetchone()[0]
+        print("End rows in {}: {}  (+{})".format(table,ct,ct-start_rows[table]))
     
 
         
