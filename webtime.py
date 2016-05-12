@@ -6,13 +6,15 @@ import os
 import csv
 import time
 
-MIN_TIME = 0.001
+MIN_TIME = 0.001                # for testing
 CONFIG_INI = "config.ini"
 
 mysql_schema = """
 create table times (id int not null auto_increment,host varchar(255),ipaddr varchar(15),qdatetime datetime,qduration float,rdatetime datetime,delta float,primary key (id));
 create table dated (id int not null auto_increment,host varchar(255),ipaddr varchar(15),qdate date,qfirst time,qlast time,qcount int,primary key (id),unique key (host,ipaddr,qdate));
 """
+
+prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
 
 def ip2long(ip):
     import socket,struct
@@ -68,36 +70,42 @@ class WebLogger:
         RemoteDisconnected = http.client.BadStatusLine
         if sys.version>'3.5':
             RemoteDisconnected = http.client.RemoteDisconnected
-        connection = http.client.HTTPConnection(ipaddr,timeout=5)
-        try:
-            url = "http://{}/".format(domain)
-            connection.request("HEAD",url)
-            r = connection.getresponse()
-        except socket.gaierror:
-            if args.debug: print("ERROR socket.gaierror {} {}".format(domain,ipaddr))
-            return
-        except socket.timeout:
-            return
-        except http.client.BadStatusLine:
-            return
-        except ConnectionResetError:
-            return
-        except OSError:
-            return
-        except RemoteDisconnected:
-            return
-        t0 = time.time()
-        val = r.getheader("Date")
-        t1 = time.time()
-        if val:
+        url = "http://{}/".format(domain)
+        for i in range(args.retry):
+            connection = http.client.HTTPConnection(ipaddr,timeout=5)
+            try:
+                connection.request("HEAD",url)
+                r = connection.getresponse()
+            except socket.gaierror:
+                if args.debug: print("ERROR socket.gaierror {} {}".format(domain,ipaddr))
+                continue
+            except socket.timeout:
+                continue
+            except http.client.BadStatusLine:
+                continue
+            except ConnectionResetError:
+                continue
+            except OSError:
+                continue
+            except RemoteDisconnected:
+                continue
+            t0 = time.time()
+            val = r.getheader("Date")
+            t1 = time.time()
+            if not val:
+                return None # No date
             date = email.utils.parsedate_to_datetime(val)
             qduration = t1-t0
             qdatetime = t0+qduration/2
             return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,qduration=qduration,
                            rdatetime=date,rcode=r.code,delta=date.timestamp()-qdatetime)
-        # No date
+        # Too many retries
+        if args.debug: print("ERROR too many retries")
+        return None
+        
 
-    def webtime(self,domain):
+    def webtime(self,qhost):
+        """Given the domain, get the IP addresses and query each one. Return the list of IP addresses that had bad times"""
         import time
         import http
         from http import client
@@ -106,57 +114,69 @@ class WebLogger:
         import socket
         import sys
 
-        prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
-        prefixes = [""]
+        c = self.mysql_conn.cursor() if self.connected else None
 
-        for prefix in prefixes:
-            qhost = prefix+domain
-            try:
-                if args.debug: print("DEBUG qhost={}".format(qhost))
-                a = socket.gethostbyname_ex(qhost)
-                ipaddrs = a[2]
-                if args.debug: print("DEBUG   qhost={} ipaddrs={}".format(qhost,ipaddrs))
-            except socket.gaierror:
-                print("ERROR socket.aierror {} ".format(qhost))
-                return
-            except socket.herror:
-                print("ERROR socket.herror {}".format(qhost))
-                return
-            for ipaddr in ipaddrs:
-                for i in range(args.retry):
-                    w = self.webtime_ip(qhost, ipaddr)
-                    if args.debug: print("DEBUG   qhost={} ipaddr={:15} w={}".format(qhost,ipaddr,w))
-                    if w:
-                        yield w
-                        break
+        # Indicate that we are querying this host today
+        t0 = time.time()
+
+        if c:
+            c.execute("insert ignore into dated (host,qdate,qfirst) values (%s,date(from_unixtime(%s)),time(from_unixtime(%s)))", (qhost,t0,t0))
+            c.execute("select id from dated where host=%s and isnull(ipaddr) and qdate=date(from_unixtime(%s))",
+                      (qhost,t0))
+            host_id = c.fetchone()
+            c.execute("update dated set qlast=time(from_unixtime(%s)),qcount=qcount+1 where id=%s",(t0,host_id))
+
+        try:
+            if args.debug: print("DEBUG qhost={}".format(qhost))
+            a = socket.gethostbyname_ex(qhost)
+            ipaddrs = a[2]
+            if args.debug: print("DEBUG   qhost={} ipaddrs={}".format(qhost,ipaddrs))
+        except socket.gaierror:
+            if c:
+                c.execute("update dated set qlast=time(from_unixtime(%s)),ecount=ecount+1 where id=%s",(t0,host_id))
+            if args.debug: print("ERROR socket.aierror {} ".format(qhost))
+            return
+        except socket.herror:
+            if c:
+                c.execute("update dated set qlast=time(from_unixtime(%s)),ecount=ecount+1 where id=%s",(t0,host_id))
+            if args.debug: print("ERROR socket.herror {}".format(qhost))
+            return
+        # Try each IP address
+        for ipaddr in ipaddrs:
+            wt = self.webtime_ip(qhost, ipaddr)
+            if args.debug: 
+                print("DEBUG   qhost={} ipaddr={:15} wt={}".format(qhost,ipaddr,wt))
+            if wt:
+                if c:
+                    c.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,date(from_unixtime(%s)),time(from_unixtime(%s)))",
+                              (wt.qhost,wt.qipaddr,wt.qdatetime,wt.qdatetime))
+                    c.execute("select id from dated where host=%s and ipaddr=%s and qdate=date(from_unixtime(%s))",
+                              (wt.qhost,wt.qipaddr,wt.qdatetime))
+                    ip_id = c.fetchone()
+                    c.execute("update dated set qlast=time(from_unixtime(%s)),qcount=qcount+1 where id=%s",(wt.qdatetime,ip_id))
+                    c.execute("update dated set wtcount=wtcount+1 where id=%s",(ip_id))
+                yield wt
 
 
-    def queryhost(self,host):
+
+    def queryhost(self,qhost):
         """Query the host and store them in a database if they are interesting. Update the database to indicate when the host was surveyed"""
         import os,math
         if self.mysql_config and not self.connected:
             self.mysql_conn = self.mysql_connect()
             self.connected = True
-            print("Connected in PID {}".format(os.getpid()))
+            if args.debug: print("Connected in PID {}".format(os.getpid()))
 
-        for wt in self.webtime(host):
+        c = self.mysql_conn.cursor() if self.connected else None
+        for wt in self.webtime(qhost):
+            # Note that we successfully queried this IP address
             if math.fabs(wt.delta) > args.mintime:
                 if args.verbose: 
-                    print("{:30} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.ptime(),wt.rdatetime))
-                if self.connected:
-                    c = self.mysql_conn.cursor()
+                    print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.ptime(),wt.rdatetime))
+                if c:
                     c.execute("insert into times (host,ipaddr,qdatetime,qduration,rdatetime,delta) values (%s,%s,from_unixtime(%s),%s,%s,%s)",
                               (wt.qhost,wt.qipaddr,wt.qdatetime,wt.qduration,wt.rdatetime,wt.delta))
-                    # Update the dated table
-                    c.execute("insert ignore into dated (host,ipaddr,qdate,qfirst,qcount) values (%s,%s,date(from_unixtime(%s)),time(from_unixtime(%s)),0)",
-                              (wt.qhost,wt.qipaddr,wt.qdatetime,wt.qdatetime))
-                    c.execute("select id from dated where host=%s and ipaddr=%s and qdate=date(from_unixtime(%s))",
-                              (wt.qhost,wt.qipaddr,wt.qdatetime))
-                    i = c.fetchone()
-                    c.execute("update dated set qlast=time(from_unixtime(%s)),qcount=qcount+1 where id=%s",(wt.qdatetime,i))
                     self.mysql_conn.commit()
-
-
 
 
 if __name__=="__main__":
@@ -192,8 +212,15 @@ if __name__=="__main__":
 
     if args.mysql:
         w.mysql_config = config["mysql"]
-        w.mysql_connect()       # test it out
-        print("MySQL works")
+        conn = w.mysql_connect()       # test it out
+        c = conn.cursor()
+        if args.debug: print("MySQL works")
+        start_rows = {}
+        for table in ["times","dated"]:
+            c.execute("select count(*) from "+table)
+            start_rows[table] = c.fetchone()[0]
+            print("Start Rows in {}: {}".format(table,start_rows[table]))
+        conn.commit()
     lookups = 0
     domains = []
 
@@ -231,7 +258,12 @@ if __name__=="__main__":
         pool = Pool(args.threads)
         results = pool.map(w.queryhost, domains)
     time_end = time.time()
-    print("Total lookups: {}  lookups/sec: {}".format(args.count,args.count/(time_end-time_start)))
+    print("Total lookups: {:,}  Total time: {:.0f}  Lookups/sec: {:.2f}".format(
+        args.count,time_end-time_start,args.count/(time_end-time_start)))
+    for table in ["times","dated"]:
+        c.execute("select count(*) from "+table)
+        count = c.fetchone()[0]
+        print("End rows in {}: {}  (+{})".format(table,count,count-start_rows[table]))
     
 
         
