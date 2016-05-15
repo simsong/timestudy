@@ -5,6 +5,8 @@
 import os
 import csv
 import time
+import pymysql, pymysql.err
+import MySQLdb, _mysql_exceptions
 
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
@@ -61,8 +63,11 @@ class WebLogger:
             if args.debug: print("Connected in PID {}".format(os.getpid()))
             conn = pymysql.connect(host=mc["host"],port=int(mc["port"]),user=mc["user"],
                                    passwd=mc['passwd'],db=mc['db'])
+            #conn = MySQLdb.connect(host=mc["host"],port=int(mc["port"]),user=mc["user"],
+            #                       passwd=mc['passwd'],db=mc['db'])
             conn.cursor().execute("set innodb_lock_wait_timeout=20")
             conn.cursor().execute("SET tx_isolation='READ-COMMITTED'");
+            self.mysql_execute_count = 0
             if cache:
                 self.connected = conn
             return conn
@@ -78,17 +83,26 @@ class WebLogger:
             self.mysql_connect(cache=True)
 
     def mysql_execute(self,c,cmd,args):
-        if not c: return
+        if not c: return        # no MySQL connection
         try:
-            print(cmd % args)
             c.execute(cmd,args)
+            self.mysql_execute_count += 1
         except pymysql.err.InternalError as e:
-            print("Error on insert into dated. td={}".format(time.time()-t0))
+            print("ERROR: pymysql.err.InternalError: {}".format(cmd % args))
             self.mysql_reconnect()
-        except pymysql.exceptions.InterfaceError as e:
-            print("Error on insert into dated. td={}".format(time.time()-t0))
+            
+        except pymysql.err.ProgrammingError as e:
+            print("ERROR: pymysql.err.ProgrammingError: {}".format(cmd % args))
+            self.mysql_reconnect()
+            
+        except _mysql_exceptions.OperationalError as e:
+            print("Error: _mysql_exceptions.OperationalError: {}".format(cmd % args))
+            print(repr(e))
             self.mysql_reconnect()
 
+        except Exception as e:
+            print("ERROR: {}:\n {}".format(repr(e),cmd % args))
+            self.mysql_reconnect()
 
     def webtime_ip(self,domain,ipaddr):
         """Find the webtime of a particular domain and IP address"""
@@ -121,9 +135,10 @@ class WebLogger:
             except RemoteDisconnected:
                 continue
             val = r.getheader("Date")
-            if not val:
-                return None # No date
-            date = email.utils.parsedate_to_datetime(val)
+            try:
+                date = email.utils.parsedate_to_datetime(val)
+            except TypeError:
+                continue        # no date!
             qduration = t1-t0
             qdatetime = t0+qduration/2
             return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,qduration=qduration,
@@ -157,7 +172,6 @@ class WebLogger:
             self.mysql_execute(c,"select id from dated where host=%s and ipaddr='' and qdate=date(from_unixtime(%s))",
                                (qhost,tq))
             host_id = c.fetchone()
-            print("host_id={}".format(host_id))
             if host_id:
                 self.mysql_execute(c,"update dated set qlast=time(from_unixtime(%s)),qcount=qcount+1 where id=%s",(tq,host_id))
 
@@ -199,7 +213,11 @@ class WebLogger:
         import os,math
 
         c = None
+        conn = None
         if self.mysql_config:
+            if args.mysql_max and self.mysql_execute_count > args.mysql_max:
+                self.mysql_reconnect() 
+            
             conn = self.mysql_connect(cache=True)
             c = conn.cursor()
 
@@ -208,17 +226,15 @@ class WebLogger:
             if math.fabs(wt.delta) > args.mintime:
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.ptime(),wt.rdatetime))
-                if c:
-                    c.execute("insert into times (host,ipaddr,qdatetime,qduration,rdatetime,delta) values (%s,%s,from_unixtime(%s),%s,%s,%s)",
-                              (wt.qhost,wt.qipaddr,wt.qdatetime,wt.qduration,wt.rdatetime,wt.delta))
-                    conn.commit()
+                self.mysql_execute(c,"insert into times (host,ipaddr,qdatetime,qduration,rdatetime,delta) values (%s,%s,from_unixtime(%s),%s,%s,%s)",
+                                   (wt.qhost,wt.qipaddr,wt.qdatetime,wt.qduration,wt.rdatetime,wt.delta))
+                if conn: conn.commit()
 
 
 if __name__=="__main__":
     import argparse
     from bs4 import BeautifulSoup, SoupStrainer
     import configparser
-    import pymysql
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--usg',action='store_true')
@@ -234,6 +250,7 @@ if __name__=="__main__":
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--host",help="Specify a host")
     parser.add_argument("--repeat",type=int,default=1,help="Times to repeat experiment")
+    parser.add_argument("--mysql_max",type=int,default=0,help="Number of MySQL connections before reconnecting")
 
     args = parser.parse_args()
 
@@ -286,6 +303,10 @@ if __name__=="__main__":
 
     if args.debug: print("Total Domains: {}".format(len(domains)))
     for r in range(args.repeat):
+        if args.repeat>1:
+            print("**************************************")
+            print("**************** {:4} ****************".format(r))
+            print("**************************************")
         if args.mysql:
             c = conn.cursor()
             start_rows = {}
