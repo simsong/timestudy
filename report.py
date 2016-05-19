@@ -16,8 +16,10 @@ CONFIG_INI = "config.ini"
 def gen_report(conn,domains,smin,smax,desc):
     domains_str = ",".join(["'{}'".format(s) for s in domains])
     c = conn.cursor()
-    c.execute("select host,ipaddr,qdatetime,delta from times where host in ("+domains_str+") order by host,ipaddr;")
-    for row in c.fetchall():
+    c.execute("select host,max(delta) from times group by host having host in ("+domains_str+") and delta>=%s and delta<smax order by host,ipaddr;",
+              (smin,smax))
+    dlist = c.fetchall()
+    for domain in dlist:
         print(row)
     
                                                                                       
