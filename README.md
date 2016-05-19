@@ -12,4 +12,6 @@ Research questions:
     www.solardecathlon.gov              54.192.85.92         -21:57:13                      2016-05-14 01:38:26+00:00
     www.solardecathlon.gov              54.192.85.98         -21:57:13                      2016-05-14 01:38:26+00:00
 
-* 
+*
+
+clockdiff in iputils used to determine idfference

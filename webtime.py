@@ -93,19 +93,27 @@ class WebTime():
     def __repr__(self):
         return "<WebTime {} {} {} {}>".format(self.qhost,self.qipaddr,self.qdatetime,self.rdatetime)
 
-def webtime_off(wt):
+#
+# Do we record?
+#
+def webtime_wrong_time(wt):
     return math.fabs(wt.delta_seconds()) > args.mintime if wt else None
+
+def webtime_record(wt):
+    if "time" in wt.qhost.lower():
+        return True
+    return webtime_wrong_time(wt)
 
 def usg_domains():
     from bs4 import BeautifulSoup, SoupStrainer
-    domains = []
+    domains = set()
     import urllib, urllib.request
     page = urllib.request.urlopen("http://usgv6-deploymon.antd.nist.gov/cgi-bin/generate-gov.v4").read()
     for link in BeautifulSoup(page, "lxml", parse_only=SoupStrainer('a')):
         try:
             import urllib
             o = urllib.parse.urlparse(link.attrs['href'])
-            if o.netloc: domains.append(o.netloc)
+            if o.netloc: domains.add(o.netloc)
         except AttributeError:
             pass
     return domains
@@ -197,6 +205,8 @@ class WebLogger:
                 continue
             except RemoteDisconnected:
                 continue
+            except http.client.HTTPException:
+                continue        # typically "got more than 100 headers"
             val = r.getheader("Date")
             try:
                 date = email.utils.parsedate_to_datetime(val)
@@ -270,7 +280,7 @@ class WebLogger:
                                    (wt.qhost,wt.qipaddr,wt.qdate()))
                 ip_id = c.fetchone()[0]
                 self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
-            if c and webtime_off(wt):
+            if c and webtime_wrong_time(wt):
                 # We got a response and it's the wrong time
                 self.mysql_execute(c,"update dated set wtcount=wtcount+1 where id=%s",(ip_id))
             if wt:
@@ -294,7 +304,7 @@ class WebLogger:
 
         for wt in self.webtime(qhost,c):
             # Note if the webtime is off.
-            if webtime_off(wt):
+            if webtime_record(wt):
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
                 self.mysql_execute(c,"insert into times (host,ipaddr,qdatetime,qduration,rdatetime,delta) "+
@@ -326,6 +336,7 @@ if __name__=="__main__":
     parser.add_argument("--norepeat",action="store_true",help="Used internally to implement repeating")
     parser.add_argument("--mysql_max",type=int,default=0,help="Number of MySQL connections before reconnecting")
     parser.add_argument("--dumpschema",action="store_true")
+    parser.add_argument("--createusg",action="store_true",help="Create USG table")
 
     args = parser.parse_args()
     config = get_config(args)
@@ -342,6 +353,15 @@ if __name__=="__main__":
         conn = w.mysql_connect(cache=False)       # test it out
         if args.debug: print("MySQL Connected")
 
+    if args.createusg:
+        domains = usg_domains()
+        c = conn.cursor()
+        c.execute("delete from usg")
+        for domain in domains:
+            c.execute("insert into usg (host) values (%s)",(domain,))
+        conn.commit()
+        exit(0)
+
     # If we are repeating, run self recursively (remove repeat args)
     if args.repeat and not args.norepeat:
         for r in range(args.repeat):
@@ -353,7 +373,7 @@ if __name__=="__main__":
         exit(0)
 
     lookups = 0
-    domains = []
+    domains = set()
 
     if args.host:
         domains.append(args.host)
@@ -368,7 +388,7 @@ if __name__=="__main__":
     if not domains:
         # Read the top-1m.csv file if we are not using USG domains
         for line in csv.reader(open("top-1m.csv"),delimiter=','):
-            domains.append(line[1])
+            domains.add(line[1])
             if len(domains) > args.count:
                 break
 
@@ -392,8 +412,6 @@ if __name__=="__main__":
         conn.commit()
     time_start = time.time()
 
-    domains = list(set(domains)) # uniquify
-
     # Query the costs, either locally or in the threads
     if args.threads==1:
         [w.queryhost(u) for u in domains]
@@ -408,7 +426,8 @@ if __name__=="__main__":
             c.execute("select count(*) from "+table)
             ct = c.fetchone()[0]
             print("End rows in {}: {}  (+{})".format(table,ct,ct-start_rows[table]))
-        print("New dated rows:")
-        c.execute("select * from dated where id>%s",(max_id,))
-        for row in c.fetchall():
-            print(row)
+        if args.debug:
+            print("New dated rows:")
+            c.execute("select * from dated where id>%s",(max_id,))
+            for row in c.fetchall():
+                print(row)
