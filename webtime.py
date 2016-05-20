@@ -41,6 +41,17 @@ def ip2long(ip):
     return struct.unpack("!L", packedIP)[0]
 
 
+def s_to_hms(secs):
+    sign  = " "
+    if secs < 0:
+        sign = "-"
+        secs = -secs
+    sec  = int(secs % 60)
+    min  = int((secs/60) % 60)
+    hour = int(secs / 3600)
+    return "{:1}{:02}:{:02}:{:02}".format(sign,hour,min,sec)
+
+
 class WebTime():
     """Webtime class. qdatetime is a datetime object when the query was made, rdatetime is the datetime returned by the remote system."""
     def __init__(self,qhost=None,qipaddr=None,qdatetime=None,qduration=None,rdatetime=None,rcode=None,dateline=None):
@@ -77,15 +88,7 @@ class WebTime():
 
     def pdiff(self):
         """Print the delta in an easy to read format"""
-        sign  = " "
-        delta = self.delta_seconds()
-        if delta < 0:
-            sign = "-"
-            delta = -delta
-        sec  = int(delta % 60)
-        min  = int((delta/60) % 60)
-        hour = int(delta / 3600)
-        return "{:1}{:02}:{:02}:{:02}".format(sign,hour,min,sec)
+        return s_to_hms(self.delta_seconds())
     def qdate(self):
         return self.qdatetime.date().isoformat()
     def qtime(self):

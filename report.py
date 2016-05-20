@@ -26,7 +26,6 @@ def gen_report(conn,smin,smax,desc):
     if smax:
         cmd += " and oset<{} ".format(smax)
     cmd += " order by host "
-    print(cmd)
     c.execute(cmd)
     domains = [row[0] for row in c.fetchall()]
     print("Hosts where clocks are off {}: {}".format(desc,len(domains)))
@@ -35,14 +34,18 @@ def gen_report(conn,smin,smax,desc):
         print("Representative domains:")
         domains = domains[0:MAX_DOMAINS_REPORT]
 
-    fmt1 = "{:30}   {:10}"
-    fmt2 = "{:30}   {:10} ({:.2f}%)"
-    print(fmt1.format("Domain","Wrong Readings"))
+    fmt1 = "{:30}   {:10}  {:10}  {:10}"
+    fmt2 = "{:30}   {:10}  {:10} ({:.2f}%) {:10} "
+    print(fmt1.format("Domain","Total","Wrong","Max Offset"))
 
     for domain in domains:
         c.execute("select sum(qcount),sum(wtcount) from dated where host=%s and ipaddr!=''",(domain,))
         (qcount,wtcount) = c.fetchone()
-        print(fmt2.format(domain,qcount,wtcount*100/qcount))
+        cmd = "select delta,host,ipaddr from times having host=%s and ipaddr!='' order by abs(delta) desc limit 1"
+        c.execute(cmd,
+                  (domain,))
+        (delta,host,ipaddr)  = c.fetchone()
+        print(fmt2.format(domain,qcount,wtcount,wtcount*100/qcount,webtime.s_to_hms(delta)))
     print("\n\n")
     
                                                                                       
