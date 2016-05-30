@@ -12,13 +12,13 @@ import sys
 import math
 
 CONFIG_INI = "config.ini"
-MAX_DOMAINS_REPORT = 10
+MAX_HOSTS_REPORT = 10
 
-usg_hosts_sql = " host in (select host from usg) "
+usg_hosts_sql = " host in (select host from hosts where usg=1) "
 
 def gen_report(conn,smin,smax,desc):
     c = conn.cursor()
-    cmd = "select host,max(abs(delta)) as oset from times group by host having true "
+    cmd = "select host,max(offset) as oset from times group by host having true "
     if args.usg:
         cmd += " and " + usg_hosts_sql + " "
     if smin:
@@ -27,25 +27,47 @@ def gen_report(conn,smin,smax,desc):
         cmd += " and oset<{} ".format(smax)
     cmd += " order by host "
     c.execute(cmd)
-    domains = [row[0] for row in c.fetchall()]
-    print("Hosts where clocks are off {}: {}".format(desc,len(domains)))
+    hosts = [row[0] for row in c.fetchall()]
+    print("Hosts where clocks are off {}: {}".format(desc,len(hosts)))
     print("\n")
-    if len(domains)>MAX_DOMAINS_REPORT:
-        print("Representative domains:")
-        domains = domains[0:MAX_DOMAINS_REPORT]
+    if len(hosts)>MAX_HOSTS_REPORT:
+        print("Representative hosts:")
+        hosts = hosts[0:MAX_HOSTS_REPORT]
 
-    fmt1 = "{:30}   {:10}  {:10}  {:10}"
-    fmt2 = "{:30}   {:10}  {:10} ({:.2f}%) {:10} "
-    print(fmt1.format("Domain","Total","Wrong","Max Offset"))
+    fmt1 = "{:36}   {:>10} {:>10}        {:>10}"
+    fmt2 = "{:36}   {:10} {:10} ({:3.0f}%) {:10} "
+    fmt3 = "   {:36}{:10} {:10}        {:10} "
+    print(fmt1.format("Host","Total","Wrong","Max Offset"))
 
-    for domain in domains:
-        c.execute("select sum(qcount),sum(wtcount) from dated where host=%s and ipaddr!=''",(domain,))
+    for host in hosts:
+        # Print the summary
+        c.execute("select sum(qcount),sum(wtcount) from dated where host=%s and ipaddr!=''",(host,))
         (qcount,wtcount) = c.fetchone()
-        cmd = "select delta,host,ipaddr from times having host=%s and ipaddr!='' order by abs(delta) desc limit 1"
-        c.execute(cmd,
-                  (domain,))
-        (delta,host,ipaddr)  = c.fetchone()
-        print(fmt2.format(domain,qcount,wtcount,wtcount*100/qcount,webtime.s_to_hms(delta)))
+
+        # Find the most wrong
+        cmd = "select offset,host,ipaddr from times having host=%s and ipaddr!='' "+\
+              "order by offset desc limit 1"
+        c.execute(cmd, (host,))
+        (offset,host,ipaddr)  = c.fetchone()
+        print(fmt2.format(host,qcount,wtcount,wtcount*100/qcount,webtime.s_to_hms(offset)))
+
+        # Get the list of IP addresses and loop for each
+        c.execute("select distinct ipaddr from dated where host=%s and ipaddr!=''",(host,))
+        ipaddrs = [row[0] for row in c.fetchall()]
+
+        for ipaddr in ipaddrs:
+            c.execute("select sum(qcount) from dated where host=%s and ipaddr=%s",(host,ipaddr))
+            qcount = c.fetchone()[0]
+            cmd = "select max(offset),count(offset) from times where host=%s and ipaddr=%s"
+            c.execute(cmd,(host,ipaddr))
+            (offset_max,offset_count) = c.fetchone()
+            if offset_max==None:
+                offset_max = 0
+            if offset_count==None:
+                offset_count = 0
+            print(fmt3.format(ipaddr,qcount,offset_count,webtime.s_to_hms(offset_max)))
+
+        print("")
     print("\n\n")
     
                                                                                       
@@ -74,17 +96,17 @@ if __name__=="__main__":
     c = conn.cursor()
     if args.debug: print("MySQL Connected")
 
-    domains = webtime.usg_domains()
+    hosts = webtime.usg_hosts()
     #
     # 
     # Overall stats
     #
-    cmd = "select count(distinct host), count(distinct ipaddr),min(qdate),max(qdate),sum(qcount) from dated "
+    cmd = "select count(distinct host), count(distinct ipaddr),min(qdate),max(qdate),sum(qcount)"+\
+          "from dated "
     if args.usg:
         cmd += " where " + usg_hosts_sql 
     c.execute(cmd)
     (hostCount,ipaddrCount,date_min,date_max,sumQcount) = c.fetchone()
-
 
     print("Total number of hosts examined: {}  ({} IP addresses)".format(hostCount,ipaddrCount))
     print("Dates of study: {} to {}".format(date_min,date_max))

@@ -70,15 +70,18 @@ class WebTime():
 
         # Make sure that datetimes are aware
 
-    def delta(self):
+    def offset(self):
         try:
-            return self.qdatetime - self.rdatetime
+            if self.qdatetime > self.rdatetime:
+                return self.qdatetime - self.rdatetime
+            else:
+                return self.rdatetime - self.qdatetime
         except TypeError as e:
             print("Bad wt: {}".format(self))
             raise e
 
-    def delta_seconds(self):
-        return self.delta().total_seconds()
+    def offset_seconds(self):
+        return self.offset().total_seconds()
 
     def qdatetime_iso(self):
         return self.qdatetime.isoformat().replace("+00:00","")
@@ -87,8 +90,8 @@ class WebTime():
         return self.rdatetime.isoformat().replace("+00:00","")
 
     def pdiff(self):
-        """Print the delta in an easy to read format"""
-        return s_to_hms(self.delta_seconds())
+        """Print the offset in an easy to read format"""
+        return s_to_hms(self.offset_seconds())
     def qdate(self):
         return self.qdatetime.date().isoformat()
     def qtime(self):
@@ -100,27 +103,35 @@ class WebTime():
 # Do we record?
 #
 def webtime_wrong_time(wt):
-    return math.fabs(wt.delta_seconds()) > args.mintime if wt else None
+    return math.fabs(wt.offset_seconds()) > args.mintime if wt else None
 
 def webtime_record(wt):
-    if "time" in wt.qhost.lower():
+    if "time.gov" in wt.qhost.lower(): # internal control
         return True
     return webtime_wrong_time(wt)
 
-def usg_domains():
+def usg_hosts():
     from bs4 import BeautifulSoup, SoupStrainer
-    domains = set()
+    hosts = set()
     import urllib, urllib.request
     page = urllib.request.urlopen("http://usgv6-deploymon.antd.nist.gov/cgi-bin/generate-gov.v4").read()
     for link in BeautifulSoup(page, "lxml", parse_only=SoupStrainer('a')):
         try:
             import urllib
             o = urllib.parse.urlparse(link.attrs['href'])
-            if o.netloc: domains.add(o.netloc)
+            if o.netloc: hosts.add(o.netloc)
         except AttributeError:
             pass
-    return domains
+    return hosts
     
+def alexa_hosts():
+    # Read the top-1m.csv file if we are not using USG domains
+    hosts = set()
+    for line in csv.reader(open("top-1m.csv"),delimiter=','):
+        hosts.add(line[1])
+    return hosts
+    # do the study
+
 
 class WebLogger:
     def __init__(self,debug=False):
@@ -255,6 +266,7 @@ class WebLogger:
             if host_id:
                 # Update the query count for the hostname
                 self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
+            self.mysql_execute(c,"update hosts set qdatetime=now() where host=%s",(qhost,))
 
         try:
             if self.debug: print("DEBUG qhost={}".format(qhost))
@@ -310,7 +322,7 @@ class WebLogger:
             if webtime_record(wt):
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
-                self.mysql_execute(c,"insert into times (host,ipaddr,qdatetime,qduration,rdatetime,delta) "+
+                self.mysql_execute(c,"insert into times (host,ipaddr,qdatetime,qduration,rdatetime,offset) "+
                                    "values (%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
                                    (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
                                     wt.qduration,wt.rdatetime_iso(),
@@ -318,28 +330,59 @@ class WebLogger:
                 if conn: conn.commit()
 
 
+def load_hosts(c,hosts,flag):
+    for host in hosts:
+        c.execute("insert ignore into hosts (host,usg) values (%s,%s)",(host,flag))
+    conn.commit()
+    exit(0)
+
+def mysql_stats(c):
+    global max_id
+    c = conn.cursor()
+    if args.debug: 
+        print(time.asctime())
+    for table in ["times","dated"]:
+        c.execute("select count(*) from "+table)
+        p = c.fetchone()[0]
+        if table not in start_rows:
+            print("Start Rows in {}: {:,}".format(table,p))
+        else:
+            print("End Rows in {}: {:,} (Δ{:,})".format(table,p,p-start_rows[table]))
+        start_rows[table] = p
+
+    c.execute("select max(id) from dated")
+    max_id = c.fetchone()[0]
+        
+    if args.debug:
+        print("New dated rows:")
+        c.execute("select * from dated where id>%s",(max_id,))
+        for row in c.fetchall():
+            print(row)
+
+
 if __name__=="__main__":
     import argparse
     import configparser
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--usg',action='store_true')
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--usg',action='store_true',help="Only check USG websites")
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
-    parser.add_argument("--mysql",action="store_true",help="output to MySQL DB")
-    parser.add_argument("--mongo",action="store_true",help="output to MongoDB")
+    parser.add_argument("--mysql",action="store_true",help="output to MySQL DB",default=True)
+    #parser.add_argument("--mongo",action="store_true",help="output to MongoDB")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
-    parser.add_argument("--threads","-j",type=int,default=None)
-    parser.add_argument("--count",type=int,default=10000,help="The number of domains to count")
+    parser.add_argument("--threads","-j",type=int,default=8,help="Number of threads")
     parser.add_argument("--verbose",action="store_true",help="output to STDOUT")
     parser.add_argument("--retry",type=int,default=2,help="Times to retry each web server")
-    parser.add_argument("--mintime",type=float,default=MIN_TIME,help="Don't report times shorter than this.")
+    parser.add_argument("--mintime",type=float,default=MIN_TIME,help="Don't record times shorter than this.")
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
-    parser.add_argument("--host",help="Specify a host")
+    parser.add_argument("--host",help="Specify a host for a specific, one-time check")
     parser.add_argument("--repeat",type=int,help="Times to repeat experiment")
     parser.add_argument("--norepeat",action="store_true",help="Used internally to implement repeating")
-    parser.add_argument("--mysql_max",type=int,default=0,help="Number of MySQL connections before reconnecting")
+    parser.add_argument("--mysql_max",type=int,default=0,help="Number of MySQL transactions before reconnecting")
     parser.add_argument("--dumpschema",action="store_true")
-    parser.add_argument("--createusg",action="store_true",help="Create USG table")
+    parser.add_argument("--loadusg",action="store_true",help="Load USG table")
+    parser.add_argument("--loadalexa",action="store_true",help="Load Alexa table")
+    parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
 
     args = parser.parse_args()
     config = get_config(args)
@@ -354,16 +397,11 @@ if __name__=="__main__":
     if args.mysql:
         w.mysql_config = config["mysql"]
         conn = w.mysql_connect(cache=False)       # test it out
+        c = conn.cursor()
         if args.debug: print("MySQL Connected")
 
-    if args.createusg:
-        domains = usg_domains()
-        c = conn.cursor()
-        c.execute("delete from usg")
-        for domain in domains:
-            c.execute("insert into usg (host) values (%s)",(domain,))
-        conn.commit()
-        exit(0)
+    if args.loadusg:   load_hosts(c,usg_hosts(),1)
+    if args.loadalexa: load_hosts(c,alexa_hosts(),0)
 
     # If we are repeating, run self recursively (remove repeat args)
     if args.repeat and not args.norepeat:
@@ -375,62 +413,29 @@ if __name__=="__main__":
             subprocess.call([sys.executable] + sys.argv + ["--norepeat"])
         exit(0)
 
-    lookups = 0
-    domains = set()
-
-    if args.host:
-        domains.append(args.host)
-
     #
     # Get the list of URLs to check
     #
-    if args.usg:
-        domains = usg_domains()
-        print("Total USG: {}".format(len(domains)))
-
-    if not domains:
-        # Read the top-1m.csv file if we are not using USG domains
-        for line in csv.reader(open("top-1m.csv"),delimiter=','):
-            domains.add(line[1])
-            if len(domains) > args.count:
-                break
-
-    # do the study
+    usgflag = 1 if args.usg else 0
+    c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
+    hosts = [row[0] for row in c.fetchall()]
+    print("Total Hosts: {}".format(len(hosts)))
 
     from multiprocessing import Pool
     pool  = Pool(args.threads)
 
-    if args.debug: print("Total Domains: {}".format(len(domains)))
+    start_rows = {}
+    if args.mysql: mysql_stats(c)
 
-    if args.mysql:
-        c = conn.cursor()
-        start_rows = {}
-        if args.debug: print(time.asctime())
-        for table in ["times","dated"]:
-            c.execute("select count(*) from "+table)
-            start_rows[table] = c.fetchone()[0]
-            print("Start Rows in {}: {}".format(table,start_rows[table]))
-        c.execute("select max(id) from dated")
-        max_id = c.fetchone()[0]
-        conn.commit()
     time_start = time.time()
 
     # Query the costs, either locally or in the threads
     if args.threads==1:
-        [w.queryhost(u) for u in domains]
+        [w.queryhost(u) for u in hosts]
     else:
-        pool.map(w.queryhost, domains)
+        pool.map(w.queryhost, hosts)
     time_end = time.time()
-    dcount = len(domains)
+    dcount = len(hosts)
     print("Total lookups: {:,}  Total time: {:.0f}  Lookups/sec: {:.2f}".format(
         dcount,time_end-time_start,dcount/(time_end-time_start)))
-    if args.mysql:
-        for table in ["times","dated"]:
-            c.execute("select count(*) from "+table)
-            ct = c.fetchone()[0]
-            print("End rows in {}: {}  (+{})".format(table,ct,ct-start_rows[table]))
-        if args.debug:
-            print("New dated rows:")
-            c.execute("select * from dated where id>%s",(max_id,))
-            for row in c.fetchall():
-                print(row)
+    if args.mysql: mysql_stats(c)
