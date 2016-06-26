@@ -1,0 +1,5 @@
+[mysql]
+user=[yourusername]
+host=[yourhostname]
+passwd=[userpassword]
+db=[yourdb]

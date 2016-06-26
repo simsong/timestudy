@@ -42,14 +42,22 @@ def ip2long(ip):
 
 
 def s_to_hms(secs):
+    def factor(secs,period):
+        return (secs // period,secs % period)
+
     sign  = " "
     if secs < 0:
         sign = "-"
         secs = -secs
-    sec  = int(secs % 60)
-    min  = int((secs/60) % 60)
-    hour = int(secs / 3600)
-    return "{:1}{:02}:{:02}:{:02}".format(sign,hour,min,sec)
+    (days,secs) = factor(secs, 24*60*60)
+    (hours,secs) = factor(secs, 60*60)
+    (mins, secs) = factor(secs, 60)
+
+    ret = sign
+    if days:
+        ret += "{}d ".format(days)
+    ret += "{:02.0f}:{:02.0f}:{:02.0f}".format(hours,mins,secs)
+    return ret
 
 
 class WebTime():
@@ -226,6 +234,10 @@ class WebLogger:
                 date = email.utils.parsedate_to_datetime(val)
             except TypeError:
                 continue        # no date!
+            except ValueError:
+                f = open("error.log","a")
+                f.write("{} now: {} host: {} ipaddr: {}  Date: {}".format(time.localtime(),time.time(),domain,ipaddr,date))
+                f.close()
             qduration = t1-t0
             qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
             return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,qduration=qduration,
@@ -388,7 +400,10 @@ if __name__=="__main__":
     config = get_config(args)
 
     if args.dumpschema:
-        call([config['mysqldump'],'-h',config['host'],'-u',config['user'],'-p',config['passwd'],'-d',config['db']])
+        mc = config["mysql"]
+        cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], '-d',mc['db']]
+        print(cmd)
+        subprocess.call(cmd)
         exit(0)
 
     w = WebLogger(args.debug)
@@ -436,6 +451,6 @@ if __name__=="__main__":
         pool.map(w.queryhost, hosts)
     time_end = time.time()
     dcount = len(hosts)
-    print("Total lookups: {:,}  Total time: {:.0f}  Lookups/sec: {:.2f}".format(
-        dcount,time_end-time_start,dcount/(time_end-time_start)))
+    print("Total lookups: {:,}  Total time: {}  Lookups/sec: {:.2f}"\
+          .format(dcount,s_to_hms(time_end-time_start),dcount/(time_end-time_start)))
     if args.mysql: mysql_stats(c)
