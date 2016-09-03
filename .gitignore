@@ -60,3 +60,7 @@ target/
 
 #Ipython Notebook
 .ipynb_checkpoints
+*~
+config.ini
+top-1m.csv
+top-1m.csv.zip
