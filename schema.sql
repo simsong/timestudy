@@ -94,4 +94,4 @@ CREATE TABLE `times` (
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- Dump completed on 2016-06-26 18:44:42
-['mysqldump', '-h', 'mysql.simson.net', '-u', 'simsong', '-pkAxRSRlMJoFiE', '-d', 'slgtimedb']
+

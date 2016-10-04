@@ -5,11 +5,25 @@
 import os
 import csv
 import time,datetime,pytz
-import pymysql, pymysql.err
-import MySQLdb, _mysql_exceptions
 import subprocess
 import sys
 import math
+
+# Find a MySQL driver..
+mysql = None
+try:
+    import pymysql, pymysql.err
+    mysql = pymysql
+except ImportError:
+    pass
+
+try:
+    if not mysql:
+        import MySQLdb, _mysql_exceptions
+        mysql = MySQLdb
+except ImportError:
+    pass
+
 
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
@@ -153,10 +167,8 @@ class WebLogger:
         mc = self.mysql_config
         try:
             if self.debug: print("Connected in PID {}".format(os.getpid()))
-            conn = pymysql.connect(host=mc["host"],port=int(mc["port"]),user=mc["user"],
+            conn = mysql.connect(host=mc["host"],port=int(mc["port"]),user=mc["user"],
                                    passwd=mc['passwd'],db=mc['db'])
-            #conn = MySQLdb.connect(host=mc["host"],port=int(mc["port"]),user=mc["user"],
-            #                       passwd=mc['passwd'],db=mc['db'])
             conn.cursor().execute("set innodb_lock_wait_timeout=20")
             conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")
             conn.cursor().execute("SET time_zone = 'UTC'")
@@ -164,7 +176,7 @@ class WebLogger:
             if cache:
                 self.connected = conn
             return conn
-        except pymysql.err.OperationalError as e:
+        except RuntimeError as e:
             print("Cannot connect to mysqld. host={} user={} passwd={} port={} db={}".format(
                 mc['host'],mc['user'],mc['passwd'],mc['port'],mc['db']))
             raise e
@@ -180,18 +192,18 @@ class WebLogger:
         try:
             c.execute(cmd,args)
             self.mysql_execute_count += 1
-        except pymysql.err.InternalError as e:
-            print("ERROR: pymysql.err.InternalError: {}".format(cmd % args))
-            self.mysql_reconnect()
-            
-        except pymysql.err.ProgrammingError as e:
-            print("ERROR: pymysql.err.ProgrammingError: {}".format(cmd % args))
-            self.mysql_reconnect()
-            
-        except _mysql_exceptions.OperationalError as e:
-            print("Error: _mysql_exceptions.OperationalError: {}".format(cmd % args))
-            print(repr(e))
-            self.mysql_reconnect()
+        #except pymysql.err.InternalError as e:
+        #    print("ERROR: pymysql.err.InternalError: {}".format(cmd % args))
+        #    self.mysql_reconnect()
+        #    
+        #except pymysql.err.ProgrammingError as e:
+        #    print("ERROR: pymysql.err.ProgrammingError: {}".format(cmd % args))
+        #    self.mysql_reconnect()
+        #    
+        #except _mysql_exceptions.OperationalError as e:
+        #    print("Error: _mysql_exceptions.OperationalError: {}".format(cmd % args))
+        #    print(repr(e))
+        #    self.mysql_reconnect()
 
         except Exception as e:
             print("ERROR: {}:\n {}".format(repr(e),cmd % args))
