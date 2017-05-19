@@ -64,3 +64,4 @@ target/
 config.ini
 top-1m.csv
 top-1m.csv.zip
+.DS_Store
