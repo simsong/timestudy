@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #https://support.alexa.com/hc/en-us/articles/200461990-Can-I-get-a-list-of-top-sites-from-an-API-
 #http://s3.amazonaws.com/alexa-static/top-1m.csv.zip
 
@@ -36,11 +35,11 @@ prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
 def get_config(args):
     import configparser
     config = configparser.ConfigParser()
-    config["mysql"] = {"host":"localhost",
-                       "user":"user",
+    config["mysql"] = {"host":"",
+                       "user":"",
                        "passwd":"",
-                       "port":3306,
-                       "db":"timedb",
+                       "port":0,
+                       "db":"",
                        "mysqldump":"mysqldump" }
     config.read(args.config)
     return config
@@ -132,6 +131,7 @@ def webtime_record(wt):
         return True
     return webtime_wrong_time(wt)
 
+"""
 def usg_hosts():
     from bs4 import BeautifulSoup, SoupStrainer
     hosts = set()
@@ -145,6 +145,21 @@ def usg_hosts():
         except AttributeError:
             pass
     return hosts
+"""
+
+def usg_hosts():
+    import csv, requests
+    url = "https://analytics.usa.gov/data/live/sites.csv"
+    hosts = set()
+    with requests.Session() as s:
+        download = s.get(url)
+        decoded = download.content.decode('utf-8')
+        cr = csv.reader(decoded.splitlines())
+        hostlist = list(cr)[1:]
+        for host in hostlist:
+            hosts.add(host[0])
+    return hosts
+
     
 def alexa_hosts():
     # Read the top-1m.csv file if we are not using USG domains
@@ -171,7 +186,7 @@ class WebLogger:
                                    passwd=mc['passwd'],db=mc['db'])
             conn.cursor().execute("set innodb_lock_wait_timeout=20")
             conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")
-            conn.cursor().execute("SET time_zone = 'UTC'")
+            conn.cursor().execute("SET time_zone = '+00:00'")
             self.mysql_execute_count = 0
             if cache:
                 self.connected = conn
@@ -346,7 +361,7 @@ class WebLogger:
             if webtime_record(wt):
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
-                self.mysql_execute(c,"insert into times (host,ipaddr,qdatetime,qduration,rdatetime,offset) "+
+                self.mysql_execute(c,"insert ignore into times (host,ipaddr,qdatetime,qduration,rdatetime,offset) "+
                                    "values (%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
                                    (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
                                     wt.qduration,wt.rdatetime_iso(),
@@ -371,7 +386,7 @@ def mysql_stats(c):
         if table not in start_rows:
             print("Start Rows in {}: {:,}".format(table,p))
         else:
-            print("End Rows in {}: {:,} (Δ{:,})".format(table,p,p-start_rows[table]))
+            print("End Rows in {}: {:,} (delta{:,})".format(table,p,p-start_rows[table]))
         start_rows[table] = p
 
     c.execute("select max(id) from dated")
@@ -400,13 +415,15 @@ if __name__=="__main__":
     parser.add_argument("--mintime",type=float,default=MIN_TIME,help="Don't record times shorter than this.")
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--host",help="Specify a host for a specific, one-time check")
-    parser.add_argument("--repeat",type=int,help="Times to repeat experiment")
+    parser.add_argument("--repeat",type=int,default=0,help="Times to repeat experiment")
+    parser.add_argument("--duration", type=int, default=0, help="Repeat experiment for number of hours")
     parser.add_argument("--norepeat",action="store_true",help="Used internally to implement repeating")
     parser.add_argument("--mysql_max",type=int,default=0,help="Number of MySQL transactions before reconnecting")
     parser.add_argument("--dumpschema",action="store_true")
     parser.add_argument("--loadusg",action="store_true",help="Load USG table")
     parser.add_argument("--loadalexa",action="store_true",help="Load Alexa table")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
+
 
     args = parser.parse_args()
     config = get_config(args)
@@ -431,19 +448,33 @@ if __name__=="__main__":
     if args.loadalexa: load_hosts(c,alexa_hosts(),0)
 
     # If we are repeating, run self recursively (remove repeat args)
-    if args.repeat and not args.norepeat:
+    if args.repeat and not args.norepeat and not args.duration:
         for r in range(args.repeat):
             print("**************************************")
             print("**************** {:4} ****************".format(r))
             print("**************************************")
             print(time.asctime())
-            subprocess.call([sys.executable] + sys.argv + ["--norepeat"])
+            subprocess.call([sys.executable] + ["-W ignore"] + sys.argv + ["--norepeat"])
+        exit(0)
+
+    if args.duration and not args.norepeat and not args.repeat:
+        starttime = time.time()
+        rundur = args.duration*60*60
+        count = 0
+        while (time.time()-starttime < rundur):
+            count += 1
+            print("**************************************")
+            print("**************** {:4} ****************".format(count))
+            print("**************************************")
+            print(time.asctime())
+            subprocess.call([sys.executable] + ["-W ignore"] + sys.argv + ["--norepeat"])
         exit(0)
 
     #
     # Get the list of URLs to check
     #
-    usgflag = 1 if args.usg else 0
+    #usgflag = 1 if args.usg else 0
+    usgflag = 1
     c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
     hosts = [row[0] for row in c.fetchall()]
     print("Total Hosts: {}".format(len(hosts)))
