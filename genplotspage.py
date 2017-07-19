@@ -70,8 +70,8 @@ def page_by_host(conn, img_dir):
                 plt.gca().xaxis.set_major_formatter(mdt.DateFormatter('%m/%Y'))
                 plt.gca().xaxis.set_major_locator(mdt.MonthLocator())
                 plt.gcf().autofmt_xdate()
-                plt.legend(loc=0)
-                plt.savefig(img_dir+img_name)
+                plt.legend(bbox_to_anchor=(1.05, 1), loc=2)
+                plt.savefig(img_dir+img_name, bbox_inches='tight')
                 htmlfile.write("<tr>\n\t<th><img src='%s' alt='%s'></th>" % (img_dir.split("/")[-2:][0]+'/'+img_name, "timeseries plot " + str(num_hosts)))
                 htmlfile.write("\t<td align='left'><pre>%s</pre></td>\n</tr>\n" % stats_str)
     
@@ -132,8 +132,8 @@ def page_by_ip(conn, img_dir):
                 plt.gca().xaxis.set_major_formatter(mdt.DateFormatter('%m/%Y'))
                 plt.gca().xaxis.set_major_locator(mdt.MonthLocator())
                 plt.gcf().autofmt_xdate()
-                plt.legend(loc=0)
-                plt.savefig(img_dir+img_name)
+                plt.legend(bbox_to_anchor=(1.05, 1), loc=2)
+                plt.savefig(img_dir+img_name, bbox_inches='tight')
                 htmlfile.write("<tr>\n\t<th><img src='%s' alt='%s'></th>" % (img_dir.split("/")[-2:][0]+'/'+img_name, "timeseries plot " + str(num_hosts)))
                 htmlfile.write("\t<td align='left'><pre>%s</pre></td>\n</tr>\n" % (ip + ":\n" + str(hosts)[1:-1]))
     
@@ -157,6 +157,7 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print ("Password Required")
     else:
+        print(time.asctime())
         start = time.time()
         conn = mysql_connect(sys.argv[1])
         page_by_host(conn, "/var/www/html/time-data/hostplots/")

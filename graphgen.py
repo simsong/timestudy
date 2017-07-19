@@ -87,15 +87,15 @@ def mad_outliers(ts, threshold):
         return [abs(t) > abs(med) for t in absdiff]
     else:
         return [(t*0.6745)/meddiff > threshold for t in absdiff]
- 
+
 def get_breaks(ts_sorted, avg_trend, threshold):
     breaks = []
     if avg_trend == 0:
         trend_threshold = threshold
     else:
-        trend_threshold = threshold*avg_trend
+        trend_threshold = (1+threshold)*avg_trend
     prev_os, class_min = ts_sorted[0], ts_sorted[0]
-    in_range = lambda x, y: avg_trend-trend_threshold <= (x-y) <= avg_trend+trend_threshold if avg_trend > 0 else avg_trend-trend_threshold >= (x-y) >= avg_trend+trend_threshold
+    in_range = lambda x, y: (-trend_threshold <= (x-y) <= trend_threshold) or (-trend_threshold >= (x-y) >= trend_threshold)
     for offset in ts_sorted:
         if not in_range(offset, prev_os):
             breaks.append((class_min, prev_os))
