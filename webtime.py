@@ -461,13 +461,17 @@ if __name__=="__main__":
         starttime = time.time()
         rundur = args.duration*60*60
         count = 0
-        while (time.time()-starttime < rundur):
+        avg_runtime = 0
+        while (time.time()-starttime+avg_runtime+60 < rundur):
+            runstart = time.time()
             count += 1
             print("**************************************")
             print("**************** {:4} ****************".format(count))
             print("**************************************")
             print(time.asctime())
             subprocess.call([sys.executable] + ["-W ignore"] + sys.argv + ["--norepeat"])
+            runtime = time.time() - runstart
+            avg_runtime = avg_runtime + ((runtime-avg_runtime)/count)
         exit(0)
 
     #
