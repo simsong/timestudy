@@ -64,7 +64,7 @@ def page_by_host(conn, img_dir):
                     total_points += len(points)
                     epochtimes, times, offsets = zip(*sorted(points, key=operator.itemgetter(0)))
                     chars = graphgen.gen_chars(offsets)
-                    stats_str += "%s (%s points)\n\tpercentage zeroes: %s\n\tnum offsets: %s\n\tavg trend len: %s\n" % (ip, str(len(points)), str(chars[0]), str(chars[1]), str(chars[2]))
+                    stats_str += "%s (%s points)\n\tpercentage zeroes: %s\n\tnum offset classes: %s\n\tavg trend len: %s\n\tgeneral trend: %s\n" % (ip, str(len(points)), str(chars[0]), str(chars[1]), str(chars[2]), str(chars[3]))
                     plt.plot(times, offsets, "-x", label=ip)
             if total_points > 0:
                 plt.gca().xaxis.set_major_formatter(mdt.DateFormatter('%m/%Y'))

@@ -131,7 +131,7 @@ def gen_chars(ts):
         avg_trend_len = len(ts)//(len(is_outlier)-trendpoints)
     avg_trend = trendsum/trendpoints
     offset_breaks = get_breaks(ts_sorted, avg_trend, 1)
-    return (zeroes/len(ts), len(offset_breaks)+1, avg_trend_len/len(ts), avg_trend != 0)
+    return (zeroes/len(ts), len(offset_breaks)+1, avg_trend_len/len(ts), avg_trend)
 
 """    
 def gen_chars_original(ts):
