@@ -38,21 +38,21 @@ def time_diff(conn, img_dir, startdate=None):
             times.append(row[0])
         if len(times) > 0:
             times.sort()
-            deltas = []
+            deltas = {}
             prev_time = times[0]
             for t in times:
                 timediff = t-prev_time
-                deltas.append(int(timediff.total_seconds()))
+                try:
+                    deltas[int(timediff.total_seconds())] += 1
+                except KeyError:
+                    deltas[int(timediff.total_seconds())] = 1
                 prev_time = t
             delta_counts = [0 for i in range(max(deltas)+1)]
             for d in deltas:
                 delta_counts[d] += 1
             plt.clf()
-#            stime = time.time()
-            plt.plot(delta_counts, 'x')
-            #plt.hist(delta_counts, bins=len(delta_counts)*2, align='left')
+            plt.vlines(list(deltas.keys()), 0, list(deltas.values()))
             plt.savefig(img_dir+img_name)
-#            print (time.time()-stime)
             img_loc = img_dir.split("/")[-2:][0]+'/'+img_name
             htmlfile.write("<div class='floated_img'>\n\t<img src='%s' alt=\%s\>\n\t<p style='font-size:20px'>%s</p>\n</div>\n" % (img_loc, img_loc, img_name))
         count += 1
@@ -65,5 +65,6 @@ if __name__ == "__main__":
     else:
         print (time.asctime())
         conn = mysql_connect(sys.argv[1])
-        time_diff(conn, "/var/www/html/time-data/timediffplots/", datetime(2017, 7, 20, 14))
+        starttime = datetime(2017, 7, 20, 14)
+        time_diff(conn, "/var/www/html/time-data/timediffplots/", starttime)
         print (time.asctime())
