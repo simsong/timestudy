@@ -327,8 +327,8 @@ class WebLogger:
                 print("DEBUG   qhost={} ipaddr={:39} wt={}".format(qhost,ipaddr,wt))
             if c and wt:
                 # Note that we are going to query this IP address (again)
-                isv6 = True if ":" in ipaddr else False
-                self.mysql_execute(c,"insert ignore into dated_v6test (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
+                isv6 = 1 if ":" in ipaddr else 0
+                self.mysql_execute(c,"insert ignore into dated_v6test (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%r,%s,%s)",
                                    (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
                 self.mysql_execute(c,"select id from dated_v6test where host=%s and ipaddr=%s and qdate=%s",
                                    (wt.qhost,wt.qipaddr,wt.qdate()))
@@ -362,9 +362,10 @@ class WebLogger:
             if webtime_record(wt):
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
-                self.mysql_execute(c,"insert ignore into times_v6test (host,ipaddr,qdatetime,qduration,rdatetime,offset) "+
-                                   "values (%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
-                                   (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
+                isv6 = 1 if ":" in wt.qipaddr else 0
+                self.mysql_execute(c,"insert ignore into times_v6test (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
+                                   "values (%s,%s,%r,%s,%s,%s,timestampdiff(second,%s,%s))",
+                                   (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
                                     wt.qduration,wt.rdatetime_iso(),
                                     wt.qdatetime_iso(),wt.rdatetime_iso()))
                 if conn: conn.commit()
