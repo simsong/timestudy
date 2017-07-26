@@ -386,7 +386,7 @@ def mysql_stats(c):
         if table not in start_rows:
             print("Start Rows in {}: {:,}".format(table,p))
         else:
-            print("End Rows in {}: {:,} (delta{:,})".format(table,p,p-start_rows[table]))
+            print("End Rows in {}: {:,} ({:,} new)".format(table,p,p-start_rows[table]))
         start_rows[table] = p
 
     c.execute("select max(id) from dated")
@@ -478,6 +478,7 @@ if __name__=="__main__":
     # Get the list of URLs to check
     #
     #usgflag = 1 if args.usg else 0
+    print(time.asctime())
     usgflag = 1
     c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
     hosts = [row[0] for row in c.fetchall()]
