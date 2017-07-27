@@ -25,7 +25,8 @@ DROP TABLE IF EXISTS `dated`;
 CREATE TABLE `dated` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `host` varchar(255) DEFAULT NULL,
-  `ipaddr` varchar(15) DEFAULT NULL,
+  `ipaddr` varchar(39) DEFAULT NULL,
+  `ipv6` tinyint(1) DEFAULT '0',
   `qdate` date DEFAULT NULL,
   `qfirst` time DEFAULT NULL,
   `qlast` time DEFAULT NULL,
@@ -52,6 +53,7 @@ DROP TABLE IF EXISTS `hosts`;
 CREATE TABLE `hosts` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `host` varchar(255) NOT NULL,
+  `recordall` tinyint(1) DEFAULT '0',
   `usg` tinyint(1) NOT NULL DEFAULT '0',
   `qdatetime` datetime NOT NULL,
   PRIMARY KEY (`id`),
@@ -71,7 +73,8 @@ DROP TABLE IF EXISTS `times`;
 CREATE TABLE `times` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `host` varchar(255) DEFAULT NULL,
-  `ipaddr` varchar(15) DEFAULT NULL,
+  `ipaddr` varchar(39) DEFAULT NULL,
+  `ipv6` tinyint(1) DEFAULT '0',
   `qdatetime` datetime DEFAULT NULL,
   `qduration` float DEFAULT NULL,
   `rdatetime` datetime DEFAULT NULL,
