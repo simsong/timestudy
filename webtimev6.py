@@ -305,7 +305,7 @@ class WebLogger:
             if host_id:
                 # Update the query count for the hostname
                 self.mysql_execute(c,"update dated_v6test set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
-            self.mysql_execute(c,"update hosts set qdatetime=now() where host=%s",(qhost,))
+            self.mysql_execute(c,"update hosts_v6test set qdatetime=now() where host=%s",(qhost,))
         try:
             if self.debug: print("DEBUG qhost={}".format(qhost))
             a = socket.getaddrinfo(qhost, 0)
@@ -357,9 +357,12 @@ class WebLogger:
             conn = self.mysql_connect(cache=True)
             c = conn.cursor()
 
+        self.mysql_execute(c,"select recordall from hosts_v6test where host=%s",(qhost))
+        record_all = c.fetchone()[0]
+
         for wt in self.webtime(qhost,c):
             # Note if the webtime is off.
-            if webtime_record(wt):
+            if webtime_record(wt) or int(record_all):
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
                 isv6 = 1 if ":" in wt.qipaddr else 0
@@ -373,7 +376,7 @@ class WebLogger:
 
 def load_hosts(c,hosts,flag):
     for host in hosts:
-        c.execute("insert ignore into hosts (host,usg) values (%s,%s)",(host,flag))
+        c.execute("insert ignore into hosts_v6test (host,usg) values (%s,%s)",(host,flag))
     conn.commit()
     exit(0)
 
@@ -388,7 +391,7 @@ def mysql_stats(c):
         if table not in start_rows:
             print("Start Rows in {}: {:,}".format(table,p))
         else:
-            print("End Rows in {}: {:,} (delta{:,})".format(table,p,p-start_rows[table]))
+            print("End Rows in {}: {:,} ({:,} new)".format(table,p,p-start_rows[table]))
         start_rows[table] = p
 
     c.execute("select max(id) from dated_v6test")
@@ -481,7 +484,7 @@ if __name__=="__main__":
     #
     #usgflag = 1 if args.usg else 0
     usgflag = 1
-    c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
+    c.execute("select host from hosts_v6test where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
     hosts = [row[0] for row in c.fetchall()]
     print("Total Hosts: {}".format(len(hosts)))
 
