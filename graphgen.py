@@ -133,59 +133,6 @@ def gen_chars(ts):
     offset_breaks = get_breaks(ts_sorted, avg_trend, 1)
     return (zeroes/len(ts), len(offset_breaks)+1, avg_trend_len/len(ts), avg_trend)
 
-"""    
-def gen_chars_original(ts):
-    ts_sorted = sorted(ts)
-    tsmin = ts_sorted[0]
-    tsmax = ts_sorted[-1]
-    tsrange = tsmax-tsmin
-    zeroes = ts.count(0)
-    total = len(ts)
-    if tsrange != 0:
-        ts_scaled = [(p - tsmin)/tsrange for p in ts_sorted]
-    else:
-        ts_scaled = ts_sorted
-    pointrates = []
-    pointdiff = 0
-    
-    # median offset
-    med = ts_sorted[total//2]
-    # absolute offset diff from median
-    absdiff = [abs(t-med) for t in ts_sorted]
-    # median offset diff
-    meddiff = absdiff[len(absdiff)//2]
-    
-    for i in range(total-1):
-        diff_scaled = ts_scaled[i+1]-ts_scaled[i]
-        diff = abs(ts[i+1]-ts[i])
-        # record all point differentials to search for anomalies
-        pointrates.append(diff_scaled)
-        # sum up total point differentials
-        pointdiff += abs(diff)
-    pointrates.sort()
-    # determine potential behavior classes; rategroups is a list that contains
-    # indices (in the sorted array) of determined breaks 
-    isoutlier = mad_outliers(pointrates, 3)
-    trendpoints, trendsum = 0, 0
-    for i in range(len(isoutlier)):
-        if not isoutlier[i]:
-            trendpoints += 1
-            trendsum += pointrates[i]
-    if trendsum > 0:
-        trendrate = 1
-    elif trendsum == 0:
-        trendrate = 0
-    else:
-        trendrate = -1
-    jumpfreq = (len(isoutlier) - trendpoints)
-    print(jumpfreq)
-
-    avgdiff = pointdiff/(total-1)
-    jumpclasses = jenks2.classify_timeseries(ts)
-    #return (jumpfreq, (len(jumpclasses)+1), trendrate, zeroes/total)
-    return (trendrate, zeroes/total)
-"""
-
 #if __name__ == "__main__":
 #    rate = random.uniform(-1, 1)
 #    ts = gen_jumpy(0.5, 0, 10, 100)
