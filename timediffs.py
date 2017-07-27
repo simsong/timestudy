@@ -54,7 +54,7 @@ def time_diff(conn, img_dir, startdate=None):
             plt.vlines(list(deltas.keys()), 0, list(deltas.values()))
             plt.savefig(img_dir+img_name)
             img_loc = img_dir.split("/")[-2:][0]+'/'+img_name
-            htmlfile.write("<div class='floated_img'>\n\t<img src='%s' alt=\%s\>\n\t<p style='font-size:20px'>%s</p>\n</div>\n" % (img_loc, img_loc, img_name))
+            htmlfile.write("<div class='floated_img'>\n\t<img src='%s' alt=\%s\>\n\t<p style='font-size:20px'>%s</p>\n</div>\n" % (img_loc, img_loc, img_name+" Points: "+str(len(deltas))))
         count += 1
     htmlfile.write("</html>")
     htmlfile.close()
@@ -65,6 +65,7 @@ if __name__ == "__main__":
     else:
         print (time.asctime())
         conn = mysql_connect(sys.argv[1])
-        starttime = datetime(2017, 7, 20, 14)
+        starttime = None
+#        starttime = datetime(2017, 7, 20, 14)
         time_diff(conn, "/var/www/html/time-data/timediffplots/", starttime)
         print (time.asctime())
