@@ -131,22 +131,6 @@ def webtime_record(wt):
         return True
     return webtime_wrong_time(wt)
 
-"""
-def usg_hosts():
-    from bs4 import BeautifulSoup, SoupStrainer
-    hosts = set()
-    import urllib, urllib.request
-    page = urllib.request.urlopen("http://usgv6-deploymon.antd.nist.gov/cgi-bin/generate-gov.v4").read()
-    for link in BeautifulSoup(page, "lxml", parse_only=SoupStrainer('a')):
-        try:
-            import urllib
-            o = urllib.parse.urlparse(link.attrs['href'])
-            if o.netloc: hosts.add(o.netloc)
-        except AttributeError:
-            pass
-    return hosts
-"""
-
 def usg_hosts():
     import csv, requests
     url = "https://analytics.usa.gov/data/live/sites.csv"
@@ -478,7 +462,6 @@ if __name__=="__main__":
     # Get the list of URLs to check
     #
     #usgflag = 1 if args.usg else 0
-    print(time.asctime())
     usgflag = 1
     c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
     hosts = [row[0] for row in c.fetchall()]
