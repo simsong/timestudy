@@ -1,8 +1,12 @@
 # timestudy
 
+We are trying to develop a meaningful measurement technique and tool to characterize the state of distributed time synchronization among Internet servers.
+
 The purpose of this project is to look at the clocks of servers on the
 Internet and see if they have the proper time or not. Many do not.
 For those that do not, we would like to characterize the following:
+
+
 
 * What kinds of time skews are observed? Buchholz and Tjaden observed several main categories:
 
