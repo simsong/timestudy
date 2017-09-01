@@ -1,0 +1,299 @@
+2017-09-01 Agenda:
+
+MI = Measurement Interest.
+   (Minimum time we care about, as delta from true time)
+   Currently MI is 2sec.  
+
+1. Look at the state of the measurement technology.
+
+   a. Review measurements that we have so far. 
+       Are there things we want to change in the plots?
+
+   b. Review how we are measuring remote time. Options:
+      a. http headers       - what we're doing 
+      b. TCP timestamps     - blocked by all tested USG firewalls
+      c. IP timestamps      - blocked by all tested USG firewalls
+      c. NTP                - untested / different project / survey NTP servers
+      d. UDP time protocols other than NTP - largely unused at this point
+      e. SMTP mail headers  - Cool idea; different set of challenges.
+      f. Web pages that have embedded human-readable time (not by JavaScript)
+                            - probably not worth doing.
+      g. Any other TCP service with time in the banner?
+                            - probably not worth doing. 
+
+2. How do we want to deal with zeros? Re-create time series?
+   a. Do we need compression? (database issue) 
+          -- Yes, if we want to store zeros.
+          -- No, if we can make better use of the data we are collecting
+             (start date, end date, queries/day, start time/end time per date.)
+   b. Compression idea 1 - store 0s as a text field. (recreate on read)
+          -- Easy to do; store in a different table.
+   c. Compression idea 2 - code everything as runs.
+          -- Back burner.
+   d. Should we move from mysql to mongodb?
+          -- We have something that works; don't do this.
+
+3. Measurement technology question:
+   a. Implement better randomization.
+          -- Easy to do, and should be done
+          -- Move to pure randomziation
+   b. Measure from multiple vantage points?     
+          -- Easy to do; run at Dreamhost. 
+          -- How do we correlate?  We don't.
+   c. Are we intersted in errors < 5s or > 5s? 
+          -- Right now, things more than 3s.
+          -- Organize graphs into 3 strata: small, medium & large time offsets 
+             (per host/ip)
+          Back-burner: High-resolution measurements.
+          -- We think we can, but it's more than just burst collection.
+             You would need to catch the change of the seconds digit.
+             You keep measuring in burst until you see it change.
+             You record just the last two.
+             Do we even want to do this?
+   d. Are we interested in multiple servers behind the same IP address?
+          -- Yes, so we might want to make several measurements in row.
+             Do we store them all in the database, or just last N? 
+          -- Suggestion: per unique URL, make 3 measurements in a row. 
+             Need to update the database so that we record 'rank'
+             in the database. We'll track it all, but for analysis, we will:
+              a - do an analysis showing the noise associated with each rank.
+              b - If first rank is noisy, just do analysis with 2 and/or 3rd rank.
+
+   e. Revise as an event-based architecture instead of multi-threading.
+           --- back burner. Not needed now, would be needed if we want to query
+               more, faster. 
+
+   e. Watching RTTs for outliers. Right now we assume that the RTT < MI
+         -- What's going on with (3,4,5) - (4,5,6) - (5,6,7) ? 
+         -- We might get a better sense of this with burst measurements 
+            and with smaller dots.
+
+   f. Should we calibrate against time.gov in real-time, or just post-processing? 
+         -- query as part of the normal run
+         -- We need to add system health/log events into a new table.
+            + heartbeat log. I'm up, here's what time.gov is, how long running.
+
+   Things to do later:
+    
+4. Better production management.
+   - now: create a dev and a production database
+   - production is always running; do interactive work on dev.
+   - Right now, we run once every 24 hours, for 24 hours.
+     -- Better approach for a runner. Start every minute, and if it is running, stop.
+   - config file of which database to run from
+   - run mode - test/production
+   - Stats on the heartbeat
+
+4. Which hosts are we surveying?
+   yes:
+   - FDIC 1000?  - change usg flag to 'cohort' and have 
+   - USG servers - usg cohort.
+   - Alexa 1000  - alexa cohort
+
+   no: - brute-force IP scans? - 
+   - NIST internal network - IP addresses.
+   - Full USG IPv4 space
+   - Full IPv4 space
+
+5. What's up with multiple sites on a single IP address?
+   -- We don't have a good answer yet; we've seen some examples that look like a
+      round-robin load balancer (just AB, never ABC). 
+   -- This only matters if the clocks are off; we can only detect that we have
+      multiple systems if the clocks are off. (We could also detect if the headers
+      are different.)
+   -- Right now, if we have one that's right and one that's wrong, we will only
+      capture the one that's wrong.
+
+6. What's up with redirect responses? http/https? 
+   a. We get a timestamp with redirect; is it correct?
+      -- The redirect timestamp seems correct.
+      -- They are generally about moving to https; we are testing both
+   b. Should we do a measurement on the redirect?
+      -- What if redirect is to a differnet host? Right now, we are losing this.
+      -- 
+
+7. Do we start on a new dataset and collect fresh data?
+
+8. Publication plans. 
+================================================================
+Notes from discussion.
+
+Improve plots:
+
+0. Do we stay with pyplot or go to D3JS?
+
+1. Make hostnames links.
+   Add mean, std. deviation, min, max to delta calculations
+
+   Add mean, std. deviation, min, max to RTT calculations
+
+   Label graphs with legend (orange = RTT, blue = time measurement)
+   Three default scale. 
+        small: -10 to +60 (seconds)
+        medium: 
+        large: 
+
+   Then group based on which scale you are using
+
+2. Record uptime in a systematic way. (log other than queries to remote hosts)
+
+3. X axis needs to be consistent in a set.
+   Sets should have a box around them so they are grouped together.
+   
+4. Metadata at the top of each plot:
+   1. When it was generated
+   2. Version number of measurement tool (and git commit)
+   3. Database size (you have that)
+
+5. Smaller dots; try to get them 2-4 pixels in the PNG.
+
+   - thin grids
+
+6. Link another web page that has:
+
+    * List of all IP addresses, and how many times it was queried, and the range.
+    * List of all hostnames, # times queried, and range.
+          > # of times quried and successful responses
+          > range for both queries and successful queries
+          > average delta, min & max
+
+7. Possibly plot the number of queries/day as a trace on the plot.
+ 
+8. Plot the dated table:
+   - SELECT qdate,qcount,ecount,wtcount where host=HOST and ipaddr=IPADDR order by qdate
+   - min(qdate), max(qdate) - to set bounds of graph
+   - Plot qcount, ecount, wtcount in a light trace on each graph (without points)
+================
+
+We have teased apart multiple machines behind multiple IP addresses.
+We are not examining multiple machines behind the same IP address.
+   See command sequence 1 below.
+    
+Query Infrastructure:
+
+1. We think that we should make multiple queries.
+   - http and https
+   - several in a row (at least 2)
+   - Do we throw out the first, or keep it?  If we are chaging both port & time, Simson argued we should do 4 queries. But if we throw away first 2 (path set-up), then we should do 6 and possibly throw away the first 2 (http & https, assuming we are querying both http and https at the same time, rather than treating them as entirely different hosts.)
+
+We havne't figured why the slope of a broken line would change. 
+
+================================================================
+integrity.gov
+ - You could use RTTs to eliminate noisy data.
+
+================================================================
+Database issues:
+
+1. Just storing the zeros in the database would be a 90x increase in storage.
+   (Alex's message of August 18, 2017)
+
+2. Simson proposes storing the zeros as a text field in a table. Worst
+   case without compression appears to be 45K/day/ip-host.
+
+   If we don't learn enough from the dated/qdate plot, we can capture all of the zeros
+   in another table that has dated/id by rtime (right time), where rtime is a text
+   string of number of seconds past midnight for each correct read.
+
+
++++
+command sequence 1:
+107.21.13.6 - //developer.uspto.gov/
+note: We started looking at redirects from http: to https:, and we saw different timeskews for each.
+
++ We don't understand how sites are being moved.
++ Is http: and https: fed from the same machine?
++ We could just try http: and https: on all URLs as two sites.
+
+Then we discovered that we got different timeskews for repeated queries. We think that there are
+two machines behind the same IP address with a load balancer.
+
+[Dance ~/gits/timestudy 11:19:55](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:21:55 GMT
+[Dance ~/gits/timestudy 11:19:56](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:19:39 GMT
+[Dance ~/gits/timestudy 11:19:57](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:21:56 GMT
+[Dance ~/gits/timestudy 11:19:57](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:19:41 GMT
+[Dance ~/gits/timestudy 11:19:59](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:22:17 GMT
+[Dance ~/gits/timestudy 11:20:19](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:20:02 GMT
+[Dance ~/gits/timestudy 11:20:20](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:22:19 GMT
+[Dance ~/gits/timestudy 11:20:21](master) $ curl --insecure --silent --dump-header /tmp/x https://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:20:04 GMT
+[Dance ~/gits/timestudy 11:20:22](master) $ curl --insecure --silent --dump-header /tmp/x http://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:23:17 GMT
+[Dance ~/gits/timestudy 11:21:18](master) $ curl --insecure --silent --dump-header /tmp/x http://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:21:02 GMT
+[Dance ~/gits/timestudy 11:21:19](master) $ curl --insecure --silent --dump-header /tmp/x http://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:21:02 GMT
+[Dance ~/gits/timestudy 11:21:20](master) $ curl --insecure --silent --dump-header /tmp/x http://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:21:03 GMT
+[Dance ~/gits/timestudy 11:21:20](master) $ curl --insecure --silent --dump-header /tmp/x http://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:23:20 GMT
+[Dance ~/gits/timestudy 11:21:21](master) $ curl --insecure --silent --dump-header /tmp/x http://developer.uspto.gov/ >/dev/null; grep Date /tmp/x
+Date: Fri, 01 Sep 2017 15:23:23 GMT
+[Dance ~/gits/timestudy 11:21:24](master) $
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+console run 2:
+
+http://www.nist.gov/ redirects (finally!) to https://www.nist.gov/
+http:// has the wrong time; https:// has the right time.
+Implemented as two virtual machines at amazon.
+
+[Dance ~/gits/timestudy 12:10:31](master) $ ./q.bash www.nist.gov
+dualstack.mc-12555-1019789594.us-east-1.elb.amazonaws.com.
+54.225.149.38
+54.243.212.78
+http://www.nist.gov/  Date: Fri, 01 Sep 2017 15:56:47 GMT
+https://www.nist.gov/  Date: Fri, 01 Sep 2017 16:10:45 GMT
+http://www.nist.gov/  Date: Fri, 01 Sep 2017 16:07:25 GMT
+https://www.nist.gov/  Date: Fri, 01 Sep 2017 16:10:45 GMT
+http://www.nist.gov/  Date: Fri, 01 Sep 2017 15:56:47 GMT
+https://www.nist.gov/  Date: Fri, 01 Sep 2017 16:10:45 GMT
+http://www.nist.gov/  Date: Fri, 01 Sep 2017 16:07:25 GMT
+https://www.nist.gov/  Date: Fri, 01 Sep 2017 16:10:45 GMT
+http://www.nist.gov/  Date: Fri, 01 Sep 2017 15:56:47 GMT
+https://www.nist.gov/  Date: Fri, 01 Sep 2017 16:10:46 GMT
+[Dance ~/gits/timestudy 12:10:46](master) $
+
+++++++++++++++++
+Three hosts behind one IP address
+[Dance ~/gits/timestudy 14:18:45](master) $ ./q2.bash portal.hud.gov
+portal.glb.hud.gov.
+170.97.67.225
+http://portal.hud.gov/  Fri Sep 1 14:18:52 EDT 2017Date: Fri, 01 Sep 2017 18:18:49 GMT
+http://portal.hud.gov/  Fri Sep 1 14:18:54 EDT 2017Date: Fri, 01 Sep 2017 18:18:51 GMT
+http://portal.hud.gov/  Fri Sep 1 14:18:55 EDT 2017Date: Fri, 01 Sep 2017 18:18:54 GMT
+http://portal.hud.gov/  Fri Sep 1 14:18:56 EDT 2017Date: Fri, 01 Sep 2017 18:18:54 GMT
+http://portal.hud.gov/  Fri Sep 1 14:18:57 EDT 2017Date: Fri, 01 Sep 2017 18:19:05 GMT
+http://portal.hud.gov/  Fri Sep 1 14:18:58 EDT 2017Date: Fri, 01 Sep 2017 18:18:55 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:00 EDT 2017Date: Fri, 01 Sep 2017 18:18:57 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:01 EDT 2017Date: Fri, 01 Sep 2017 18:19:00 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:02 EDT 2017Date: Fri, 01 Sep 2017 18:19:10 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:03 EDT 2017Date: Fri, 01 Sep 2017 18:19:00 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:04 EDT 2017Date: Fri, 01 Sep 2017 18:19:01 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:06 EDT 2017Date: Fri, 01 Sep 2017 18:19:03 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:07 EDT 2017Date: Fri, 01 Sep 2017 18:19:06 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:08 EDT 2017Date: Fri, 01 Sep 2017 18:19:16 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:09 EDT 2017Date: Fri, 01 Sep 2017 18:19:06 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:10 EDT 2017Date: Fri, 01 Sep 2017 18:19:09 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:12 EDT 2017Date: Fri, 01 Sep 2017 18:19:20 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:13 EDT 2017Date: Fri, 01 Sep 2017 18:19:10 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:14 EDT 2017Date: Fri, 01 Sep 2017 18:19:13 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:15 EDT 2017Date: Fri, 01 Sep 2017 18:19:14 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:16 EDT 2017Date: Fri, 01 Sep 2017 18:19:24 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:18 EDT 2017Date: Fri, 01 Sep 2017 18:19:15 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:19 EDT 2017Date: Fri, 01 Sep 2017 18:19:16 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:20 EDT 2017Date: Fri, 01 Sep 2017 18:19:19 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:21 EDT 2017Date: Fri, 01 Sep 2017 18:19:18 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:22 EDT 2017Date: Fri, 01 Sep 2017 18:19:21 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:24 EDT 2017Date: Fri, 01 Sep 2017 18:19:22 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:25 EDT 2017Date: Fri, 01 Sep 2017 18:19:22 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:26 EDT 2017Date: Fri, 01 Sep 2017 18:19:23 GMT
+http://portal.hud.gov/  Fri Sep 1 14:19:27 EDT 2017Date: Fri, 01 Sep 2017 18:19:35 GMT
+[Dance ~/gits/timestudy 14:19:29](master) $
