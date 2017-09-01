@@ -131,6 +131,22 @@ def webtime_record(wt):
         return True
     return webtime_wrong_time(wt)
 
+"""
+def usg_hosts():
+    from bs4 import BeautifulSoup, SoupStrainer
+    hosts = set()
+    import urllib, urllib.request
+    page = urllib.request.urlopen("http://usgv6-deploymon.antd.nist.gov/cgi-bin/generate-gov.v4").read()
+    for link in BeautifulSoup(page, "lxml", parse_only=SoupStrainer('a')):
+        try:
+            import urllib
+            o = urllib.parse.urlparse(link.attrs['href'])
+            if o.netloc: hosts.add(o.netloc)
+        except AttributeError:
+            pass
+    return hosts
+"""
+
 def usg_hosts():
     import csv, requests
     url = "https://analytics.usa.gov/data/live/sites.csv"
@@ -216,7 +232,7 @@ class WebLogger:
             RemoteDisconnected = http.client.RemoteDisconnected
         url = "http://{}/".format(domain)
         for i in range(args.retry):
-            connection = http.client.HTTPConnection(ipaddr,timeout=args.timeout)
+            connection = http.client.HTTPConnection(ipaddr,80,timeout=args.timeout)
             try:
                 connection.request("HEAD",url)
                 t0 = time.time()
@@ -279,29 +295,28 @@ class WebLogger:
 
         if c:
             t0 = time.time()
-            self.mysql_execute(c,"insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)",
+            self.mysql_execute(c,"insert ignore into dated_v6test (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)",
                                (qhost,qdate,qtime))
             t1 = time.time()
             td = t1-t0
-            self.mysql_execute(c,"select id from dated where host=%s and ipaddr='' and qdate=%s",
+            self.mysql_execute(c,"select id from dated_v6test where host=%s and ipaddr='' and qdate=%s",
                                (qhost,qdate))
             host_id = c.fetchone()
             if host_id:
                 # Update the query count for the hostname
-                self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
-            self.mysql_execute(c,"update hosts set qdatetime=now() where host=%s",(qhost,))
-
+                self.mysql_execute(c,"update dated_v6test set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
+            self.mysql_execute(c,"update hosts_v6test set qdatetime=now() where host=%s",(qhost,))
         try:
             if self.debug: print("DEBUG qhost={}".format(qhost))
-            a = socket.gethostbyname_ex(qhost)
-            ipaddrs = a[2]
+            a = socket.getaddrinfo(qhost, 0)
+            ipaddrs = [i[4][0] for i in a]
             if self.debug: print("DEBUG   qhost={} ipaddrs={}".format(qhost,ipaddrs))
         except socket.gaierror:
-            if host_id: self.mysql_execute(c,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            if host_id: self.mysql_execute(c,"update dated_v6test set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
             if self.debug: print("ERROR socket.aierror {} ".format(qhost))
             return
         except socket.herror:
-            if host_id: self.mysql_execute(c,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            if host_id: self.mysql_execute(c,"update dated_v6test set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
             if self.debug: print("ERROR socket.herror {}".format(qhost))
             return
         # Try each IP address
@@ -309,21 +324,23 @@ class WebLogger:
             # Query the IP address
             wt = self.webtime_ip(qhost, ipaddr)
             if self.debug: 
-                print("DEBUG   qhost={} ipaddr={:15} wt={}".format(qhost,ipaddr,wt))
+                print("DEBUG   qhost={} ipaddr={:39} wt={}".format(qhost,ipaddr,wt))
             if c and wt:
                 # Note that we are going to query this IP address (again)
-                self.mysql_execute(c,"insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)",
-                                   (wt.qhost,wt.qipaddr,wt.qdate(),wt.qtime()))
-                self.mysql_execute(c,"select id from dated where host=%s and ipaddr=%s and qdate=%s",
+                isv6 = 1 if ":" in ipaddr else 0
+                self.mysql_execute(c,"insert ignore into dated_v6test (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%r,%s,%s)",
+                                   (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
+                self.mysql_execute(c,"select id from dated_v6test where host=%s and ipaddr=%s and qdate=%s",
                                    (wt.qhost,wt.qipaddr,wt.qdate()))
                 ip_id = c.fetchone()[0]
-                self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
+                self.mysql_execute(c,"update dated_v6test set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
             if c and webtime_wrong_time(wt):
                 # We got a response and it's the wrong time
-                self.mysql_execute(c,"update dated set wtcount=wtcount+1 where id=%s",(ip_id))
+                self.mysql_execute(c,"update dated_v6test set wtcount=wtcount+1 where id=%s",(ip_id))
             if wt:
                 # We got a wrong time
                 yield wt
+
 
 
 
@@ -340,14 +357,18 @@ class WebLogger:
             conn = self.mysql_connect(cache=True)
             c = conn.cursor()
 
+        self.mysql_execute(c,"select recordall from hosts_v6test where host=%s",(qhost))
+        record_all = c.fetchone()[0]
+
         for wt in self.webtime(qhost,c):
             # Note if the webtime is off.
-            if webtime_record(wt):
+            if webtime_record(wt) or int(record_all):
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
-                self.mysql_execute(c,"insert ignore into times (host,ipaddr,qdatetime,qduration,rdatetime,offset) "+
-                                   "values (%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
-                                   (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
+                isv6 = 1 if ":" in wt.qipaddr else 0
+                self.mysql_execute(c,"insert ignore into times_v6test (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
+                                   "values (%s,%s,%r,%s,%s,%s,timestampdiff(second,%s,%s))",
+                                   (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
                                     wt.qduration,wt.rdatetime_iso(),
                                     wt.qdatetime_iso(),wt.rdatetime_iso()))
                 if conn: conn.commit()
@@ -355,7 +376,7 @@ class WebLogger:
 
 def load_hosts(c,hosts,flag):
     for host in hosts:
-        c.execute("insert ignore into hosts (host,usg) values (%s,%s)",(host,flag))
+        c.execute("insert ignore into hosts_v6test (host,usg) values (%s,%s)",(host,flag))
     conn.commit()
     exit(0)
 
@@ -364,7 +385,7 @@ def mysql_stats(c):
     c = conn.cursor()
     if args.debug: 
         print(time.asctime())
-    for table in ["times","dated"]:
+    for table in ["times_v6test","dated_v6test"]:
         c.execute("select count(*) from "+table)
         p = c.fetchone()[0]
         if table not in start_rows:
@@ -373,12 +394,12 @@ def mysql_stats(c):
             print("End Rows in {}: {:,} ({:,} new)".format(table,p,p-start_rows[table]))
         start_rows[table] = p
 
-    c.execute("select max(id) from dated")
+    c.execute("select max(id) from dated_v6test")
     max_id = c.fetchone()[0]
         
     if args.debug:
         print("New dated rows:")
-        c.execute("select * from dated where id>%s",(max_id,))
+        c.execute("select * from dated_v6test where id>%s",(max_id,))
         for row in c.fetchall():
             print(row)
 
@@ -463,7 +484,7 @@ if __name__=="__main__":
     #
     #usgflag = 1 if args.usg else 0
     usgflag = 1
-    c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
+    c.execute("select host from hosts_v6test where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
     hosts = [row[0] for row in c.fetchall()]
     print("Total Hosts: {}".format(len(hosts)))
 
