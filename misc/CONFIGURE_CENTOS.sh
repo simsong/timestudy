@@ -18,6 +18,11 @@ sudo yum install -y epel-release
 sudo yum install -y python34 python34-pytest python34-setuptools python34-scipy
 sudo pip3 install matplotlib
 
+# Oh, this works better; it gets python3.6
+# https://www.digitalocean.com/community/tutorials/how-to-install-python-3-and-set-up-a-local-programming-environment-on-centos-7
+# sudo yum -y install https://centos7.iuscommunity.org/ius-release.rpm
+# sudo yum -y install python36u
+
 # Set up the Centos Databse
 sudo mysql_secure_installation
 echo run the following commands

@@ -1,0 +1,35 @@
+Task List.
+
+Done things:
++ Set up mirror on dreamhost (2017-09-04) 208.113.132.46
+
+
+================================================================
+To do things:
+
+Simson:
+ - Create infrastructure for test & production environments. 
+   - Document in README.md so that Alex can follow. 
+ - Revise database schema to allow for multiple cohorts of hosts.
+ - Revise scanner to be run every minute out of cron; add locks.
+ - Add cname and geolocation info to query process.
+ - Implmenet randomization algorithm; allow selection of choice algorithm to be specified in config file.
+
+Alex:
+(Simson recommends making changes in this order for simplicity.)
+ - Create a "make" target that makes all plots in directory
+   specified by config file.
+ - Add additional HTML page outputs reporting on full database.
+ - Make recommended changes to graphs based on `times` table.
+   - smaller dot size
+ - Make recommended changes to graphs based on `dated` table.
+   - background with # of queries/day, etc. 
+   - Stop using pyplot subplot feature. 
+   - Improve HTML display to group plots together.
+
+Doug: 
+ - Provide Alex with additional hosts to be checked.
+   - Quesiton - can we put these hosts into the git repository?
+ - Come up with clearly stated research and publication goals.
+ - Reach out to government sponsors (DHS? FDIC?) to find out if there is interest in this project.
+ - Continue to research other technologies that may benefit project. 
