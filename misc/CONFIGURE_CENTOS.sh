@@ -11,6 +11,13 @@ sudo systemctl start mariadb
 sudo systemctl status mariadb
 sudo systemctl enable mariadb
 
+# Install Python3 from EPEL Repository
+# http://ask.xmodulo.com/install-python3-centos.html
+# It only has Python3.4! Ick. 
+sudo yum install -y epel-release
+sudo yum install -y python34 python34-pytest python34-setuptools python34-scipy
+sudo pip3 install matplotlib
+
 # Set up the Centos Databse
 sudo mysql_secure_installation
 echo run the following commands
