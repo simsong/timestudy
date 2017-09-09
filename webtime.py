@@ -386,11 +386,13 @@ def mysql_stats(c):
 if __name__=="__main__":
     import argparse
     import configparser
+    import fcntl
+    import sys
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--usg',action='store_true',help="Only check USG websites")
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
-    parser.add_argument("--mysql",action="store_true",help="output to MySQL DB",default=True)
+    parser.add_argument("--mysql",action="store_true",help="write results to MySQL DB",default=True)
     #parser.add_argument("--mongo",action="store_true",help="output to MongoDB")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
     parser.add_argument("--threads","-j",type=int,default=8,help="Number of threads")
@@ -399,18 +401,28 @@ if __name__=="__main__":
     parser.add_argument("--mintime",type=float,default=MIN_TIME,help="Don't record times shorter than this.")
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--host",help="Specify a host for a specific, one-time check")
-    parser.add_argument("--repeat",type=int,default=0,help="Times to repeat experiment")
     parser.add_argument("--duration", type=int, default=0, help="Repeat experiment for number of hours")
+    parser.add_argument("--repeat",type=int,default=0,help="Times to repeat experiment")
     parser.add_argument("--norepeat",action="store_true",help="Used internally to implement repeating")
+    parser.add_argument("--daemon",action="store_true",help="Run as a daemon, forever")
     parser.add_argument("--mysql_max",type=int,default=0,help="Number of MySQL transactions before reconnecting")
     parser.add_argument("--dumpschema",action="store_true")
     parser.add_argument("--loadusg",action="store_true",help="Load USG table")
     parser.add_argument("--loadalexa",action="store_true",help="Load Alexa table")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
 
-
     args = parser.parse_args()
     config = get_config(args)
+
+    if args.daemon:
+        # Running as a daemon. Make sure only one of us is running
+        fd = os.open(__file__,os.O_RDONLY)
+        if fd>0:
+            try:
+                fcntl.flock(fd,fcntl.LOCK_EX)
+            except IOError:
+                print("Could not acquire lock")
+                exit(1)
 
     if args.dumpschema:
         mc = config["mysql"]
@@ -419,9 +431,10 @@ if __name__=="__main__":
         subprocess.call(cmd)
         exit(0)
 
-    w = WebLogger(args.debug)
 
-    # Make sure mySQL works
+    # Make sure mySQL works. We do this here so that we don't report that we can't connect to MySQL after the loop starts.
+    # We cache the results in w to avoid reundent connections to the MySQL server.
+    w = WebLogger(args.debug)
     if args.mysql:
         w.mysql_config = config["mysql"]
         conn = w.mysql_connect(cache=False)       # test it out
@@ -485,3 +498,6 @@ if __name__=="__main__":
     print("Total lookups: {:,}  Total time: {}  Lookups/sec: {:.2f}"\
           .format(dcount,s_to_hms(time_end-time_start),dcount/(time_end-time_start)))
     if args.mysql: mysql_stats(c)
+
+    # finally, release our lock
+    fcntl.flock(fd,fcntl.LOCK_UN)

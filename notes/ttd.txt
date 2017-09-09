@@ -1,8 +1,11 @@
 Task List.
++ means a completed task.
+- means a task that needs completing.
 
 Done things:
 + Set up mirror on dreamhost (2017-09-04) 208.113.132.46
-
+- Modify webtime.py so that it gets a lock
+- bring webtime.py and webtimev6.py back into a single program.
 
 ================================================================
 To do things:

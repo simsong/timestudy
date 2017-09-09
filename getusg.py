@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-from bs4 import BeautifulSoup, SoupStrainer
 import glob
+import urllib
 import urllib.request
 import re
-
+from bs4 import BeautifulSoup
 
 
 if __name__=="__main__":
     page = urllib.request.urlopen("http://usgv6-deploymon.antd.nist.gov/cgi-bin/generate-gov.v4").read()
-    for link in BeautifulSoup(page, "lxml", parse_only=SoupStrainer('a')):
-        try:
-            import urllib
-            o = urllib.parse.urlparse(link.attrs['href'])
-
-        except AttributeError:
-            pass
+    soup = BeautifulSoup(page,'lxml')
+    for link in soup.findAll('a', attrs={'href': re.compile("^https?://")}):
+        print(link.get('href'))
