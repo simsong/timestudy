@@ -1,0 +1,92 @@
+<                 self.mysql_execute(c,"insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)",
+<                                    (wt.qhost,wt.qipaddr,wt.qdate(),wt.qtime()))
+<                 self.mysql_execute(c,"select id from dated where host=%s and ipaddr=%s and qdate=%s",
+---
+>                 isv6 = 1 if ":" in ipaddr else 0
+>                 self.mysql_execute(c,"insert ignore into dated_v6test (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%r,%s,%s)",
+>                                    (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
+>                 self.mysql_execute(c,"select id from dated_v6test where host=%s and ipaddr=%s and qdate=%s",
+320c336
+<                 self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
+---
+>                 self.mysql_execute(c,"update dated_v6test set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
+323c339
+<                 self.mysql_execute(c,"update dated set wtcount=wtcount+1 where id=%s",(ip_id))
+---
+>                 self.mysql_execute(c,"update dated_v6test set wtcount=wtcount+1 where id=%s",(ip_id))
+329a346
+> 
+342a360,362
+>         self.mysql_execute(c,"select recordall from hosts_v6test where host=%s",(qhost))
+>         record_all = c.fetchone()[0]
+> 
+345c365
+<             if webtime_record(wt):
+---
+>             if webtime_record(wt) or int(record_all):
+348,350c368,371
+<                 self.mysql_execute(c,"insert ignore into times (host,ipaddr,qdatetime,qduration,rdatetime,offset) "+
+<                                    "values (%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
+<                                    (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
+---
+>                 isv6 = 1 if ":" in wt.qipaddr else 0
+>                 self.mysql_execute(c,"insert ignore into times_v6test (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
+>                                    "values (%s,%s,%r,%s,%s,%s,timestampdiff(second,%s,%s))",
+>                                    (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
+358c379
+<         c.execute("insert ignore into hosts (host,usg) values (%s,%s)",(host,flag))
+---
+>         c.execute("insert ignore into hosts_v6test (host,usg) values (%s,%s)",(host,flag))
+367c388
+<     for table in ["times","dated"]:
+---
+>     for table in ["times_v6test","dated_v6test"]:
+376c397
+<     c.execute("select max(id) from dated")
+---
+>     c.execute("select max(id) from dated_v6test")
+381c402
+<         c.execute("select * from dated where id>%s",(max_id,))
+---
+>         c.execute("select * from dated_v6test where id>%s",(max_id,))
+389,390d409
+<     import fcntl
+<     import sys
+395c414
+<     parser.add_argument("--mysql",action="store_true",help="write results to MySQL DB",default=True)
+---
+>     parser.add_argument("--mysql",action="store_true",help="output to MySQL DB",default=True)
+404d422
+<     parser.add_argument("--duration", type=int, default=0, help="Repeat experiment for number of hours")
+405a424
+>     parser.add_argument("--duration", type=int, default=0, help="Repeat experiment for number of hours")
+407d425
+<     parser.add_argument("--daemon",action="store_true",help="Run as a daemon, forever")
+413a432
+> 
+417,426d435
+<     if args.daemon:
+<         # Running as a daemon. Make sure only one of us is running
+<         fd = os.open(__file__,os.O_RDONLY)
+<         if fd>0:
+<             try:
+<                 fcntl.flock(fd,fcntl.LOCK_EX)
+<             except IOError:
+<                 print("Could not acquire lock")
+<                 exit(1)
+< 
+434,436d442
+< 
+<     # Make sure mySQL works. We do this here so that we don't report that we can't connect to MySQL after the loop starts.
+<     # We cache the results in w to avoid reundent connections to the MySQL server.
+437a444,445
+> 
+>     # Make sure mySQL works
+479c487
+<     c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
+---
+>     c.execute("select host from hosts_v6test where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
+501,503d508
+< 
+<     # finally, release our lock
+<     fcntl.flock(fd,fcntl.LOCK_UN)

@@ -8,42 +8,14 @@ import subprocess
 import sys
 import math
 
-# Find a MySQL driver..
-mysql = None
-try:
-    import pymysql, pymysql.err
-    mysql = pymysql
-except ImportError:
-    pass
-
-try:
-    if not mysql:
-        import MySQLdb, _mysql_exceptions
-        mysql = MySQLdb
-except ImportError:
-    pass
-
+import db
+mysql = db.get_mysql()
 
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
 
-mysql_schema = """
-"""
 
 prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
-
-def get_config(args):
-    import configparser
-    config = configparser.ConfigParser()
-    config["mysql"] = {"host":"",
-                       "user":"",
-                       "passwd":"",
-                       "port":0,
-                       "db":"",
-                       "mysqldump":"mysqldump" }
-    config.read(args.config)
-    return config
-
 
 def ip2long(ip):
     import socket,struct
@@ -131,20 +103,6 @@ def webtime_record(wt):
         return True
     return webtime_wrong_time(wt)
 
-def usg_hosts():
-    import csv, requests
-    url = "https://analytics.usa.gov/data/live/sites.csv"
-    hosts = set()
-    with requests.Session() as s:
-        download = s.get(url)
-        decoded = download.content.decode('utf-8')
-        cr = csv.reader(decoded.splitlines())
-        hostlist = list(cr)[1:]
-        for host in hostlist:
-            hosts.add(host[0])
-    return hosts
-
-    
 def alexa_hosts():
     # Read the top-1m.csv file if we are not using USG domains
     hosts = set()
@@ -163,22 +121,9 @@ class WebLogger:
     def mysql_connect(self,cache=False):
         if self.connected:
             return self.connected
-        mc = self.mysql_config
+        self.conn
+        self.connected = True
         try:
-            if self.debug: print("Connected in PID {}".format(os.getpid()))
-            conn = mysql.connect(host=mc["host"],port=int(mc["port"]),user=mc["user"],
-                                   passwd=mc['passwd'],db=mc['db'])
-            conn.cursor().execute("set innodb_lock_wait_timeout=20")
-            conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")
-            conn.cursor().execute("SET time_zone = '+00:00'")
-            self.mysql_execute_count = 0
-            if cache:
-                self.connected = conn
-            return conn
-        except RuntimeError as e:
-            print("Cannot connect to mysqld. host={} user={} passwd={} port={} db={}".format(
-                mc['host'],mc['user'],mc['passwd'],mc['port'],mc['db']))
-            raise e
         
     def mysql_reconnect(self):
         if self.connected:
@@ -187,7 +132,6 @@ class WebLogger:
             self.mysql_connect(cache=True)
 
     def mysql_execute(self,c,cmd,args):
-        if not c: return        # no MySQL connection
         try:
             c.execute(cmd,args)
             self.mysql_execute_count += 1
@@ -216,7 +160,7 @@ class WebLogger:
             RemoteDisconnected = http.client.RemoteDisconnected
         url = "http://{}/".format(domain)
         for i in range(args.retry):
-            connection = http.client.HTTPConnection(ipaddr,timeout=args.timeout)
+            connection = http.client.HTTPConnection(ipaddr,80,timeout=args.timeout)
             try:
                 connection.request("HEAD",url)
                 t0 = time.time()
@@ -293,8 +237,8 @@ class WebLogger:
 
         try:
             if self.debug: print("DEBUG qhost={}".format(qhost))
-            a = socket.gethostbyname_ex(qhost)
-            ipaddrs = a[2]
+            a = socket.getaddrinfo(qhost, 0)
+            ipaddrs = [i[4][0] for i in a]
             if self.debug: print("DEBUG   qhost={} ipaddrs={}".format(qhost,ipaddrs))
         except socket.gaierror:
             if host_id: self.mysql_execute(c,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
@@ -309,11 +253,12 @@ class WebLogger:
             # Query the IP address
             wt = self.webtime_ip(qhost, ipaddr)
             if self.debug: 
-                print("DEBUG   qhost={} ipaddr={:15} wt={}".format(qhost,ipaddr,wt))
+                print("DEBUG   qhost={} ipaddr={:39} wt={}".format(qhost,ipaddr,wt))
             if c and wt:
                 # Note that we are going to query this IP address (again)
-                self.mysql_execute(c,"insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)",
-                                   (wt.qhost,wt.qipaddr,wt.qdate(),wt.qtime()))
+                isv6 = 1 if ":" in ipaddr else 0
+                self.mysql_execute(c,"insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
+                                   (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
                 self.mysql_execute(c,"select id from dated where host=%s and ipaddr=%s and qdate=%s",
                                    (wt.qhost,wt.qipaddr,wt.qdate()))
                 ip_id = c.fetchone()[0]
@@ -331,22 +276,25 @@ class WebLogger:
         """Query the host and stores the bad time reads in the times database if they are off."""
         import os,math
 
-        c = None
+        cursor = None
         conn = None
         if self.mysql_config:
             if args.mysql_max and self.mysql_execute_count > args.mysql_max:
                 self.mysql_reconnect() 
             
             conn = self.mysql_connect(cache=True)
-            c = conn.cursor()
+            cursor = conn.cursor()
 
-        for wt in self.webtime(qhost,c):
+        self.mysql_execute(c,"select recordall from hosts_v6test where host=%s",(qhost))
+        record_all = c.fetchone()[0]
+
+        for wt in self.webtime(qhost,cursor):
             # Note if the webtime is off.
-            if webtime_record(wt):
+            if webtime_record(wt) or record_all>0:
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
-                self.mysql_execute(c,"insert ignore into times (host,ipaddr,qdatetime,qduration,rdatetime,offset) "+
-                                   "values (%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
+                self.mysql_execute(cursor,"insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
+                                   "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
                                    (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
                                     wt.qduration,wt.rdatetime_iso(),
                                     wt.qdatetime_iso(),wt.rdatetime_iso()))
@@ -393,7 +341,6 @@ if __name__=="__main__":
     parser.add_argument('--usg',action='store_true',help="Only check USG websites")
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--mysql",action="store_true",help="write results to MySQL DB",default=True)
-    #parser.add_argument("--mongo",action="store_true",help="output to MongoDB")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
     parser.add_argument("--threads","-j",type=int,default=8,help="Number of threads")
     parser.add_argument("--verbose",action="store_true",help="output to STDOUT")
@@ -405,14 +352,13 @@ if __name__=="__main__":
     parser.add_argument("--repeat",type=int,default=0,help="Times to repeat experiment")
     parser.add_argument("--norepeat",action="store_true",help="Used internally to implement repeating")
     parser.add_argument("--daemon",action="store_true",help="Run as a daemon, forever")
-    parser.add_argument("--mysql_max",type=int,default=0,help="Number of MySQL transactions before reconnecting")
     parser.add_argument("--dumpschema",action="store_true")
     parser.add_argument("--loadusg",action="store_true",help="Load USG table")
     parser.add_argument("--loadalexa",action="store_true",help="Load Alexa table")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
 
     args = parser.parse_args()
-    config = get_config(args)
+    config = db.get_config(args)
 
     if args.daemon:
         # Running as a daemon. Make sure only one of us is running

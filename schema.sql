@@ -26,7 +26,7 @@ CREATE TABLE `dated` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `host` varchar(255) DEFAULT NULL,
   `ipaddr` varchar(39) DEFAULT NULL,
-  `ipv6` tinyint(1) DEFAULT '0',
+  `isv6` tinyint(1) DEFAULT '0',
   `qdate` date DEFAULT NULL,
   `qfirst` time DEFAULT NULL,
   `qlast` time DEFAULT NULL,

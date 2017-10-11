@@ -3,3 +3,7 @@ user=[yourusername]
 host=[yourhostname]
 passwd=[userpassword]
 db=[yourdb]
+
+[cron]
+# How often we should run:
+repeat=300
