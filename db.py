@@ -1,5 +1,9 @@
 #!/usr/bin/python3
 
+# 
+# db.py:
+# Code for working with the MySQL database
+
 import sys
 if sys.version < '3':
     raise RuntimeError("Requires Python 3")
@@ -28,18 +32,15 @@ def get_mysql():
 
     raise RuntimeError("Cannot find MySQL driver")
 
-# Read the configuration file
-def get_config(args):
-    import configparser
-    config = configparser.ConfigParser()
+def mysql_prep(config):
+    """Prep the config file for the MySQL section"""
     config["mysql"] = {"host":"",
                        "user":"",
                        "passwd":"",
                        "port":DEFAULT_MYSQL_PORT,
                        "db":DEFAULT_MYSQL_DB,
                        "mysqldump":"mysqldump" }
-    config.read(args.config)
-    return config
+
 
 def mysql_connect(config):
     mysql = get_mysql()
@@ -72,3 +73,55 @@ def upgrade_schema(conn):
         return
     print("Upgrading schema...")
     send_schema(conn,open("schema_v1_v2.sql","r").read())
+
+def mysql_stats(c):
+    global max_id
+    c = conn.cursor()
+    if args.debug: 
+        print(time.asctime())
+    for table in ["times","dated"]:
+        c.execute("select count(*) from "+table)
+        p = c.fetchone()[0]
+        if table not in start_rows:
+            print("Start Rows in {}: {:,}".format(table,p))
+        else:
+            print("End Rows in {}: {:,} ({:,} new)".format(table,p,p-start_rows[table]))
+        start_rows[table] = p
+
+    c.execute("select max(id) from dated")
+    max_id = c.fetchone()[0]
+        
+    if args.debug:
+        print("New dated rows:")
+        c.execute("select * from dated where id>%s",(max_id,))
+        for row in c.fetchall():
+            print(row)
+
+def mysql_dump(config):
+    mc = config["mysql"]
+    cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], '-d',mc['db']]
+    print(cmd)
+    subprocess.call(cmd)
+    exit(0)
+    
+
+
+if __name__=="__main__":
+    import argparse
+    import configparser
+    import sys
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--config',help='specify config file')
+    parser.add_argument("--dumpschema",action="store_true")
+
+    args = parser.parse_args()
+
+    import configparser 
+    config = configparser.ConfigParser() # create a config parser
+    db.mysql_prep(config)                # prep it with default MySQL parameters
+    config.read(args.config)             # read the config file
+
+    if args.dumpschema:
+        mysql_dumpschema(config)
+

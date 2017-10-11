@@ -7,6 +7,14 @@ Internet and see if they have the proper time or not. Many do not.
 For those that do not, we would like to characterize the following:
 
 
+# Theory of Operation
+New source code design:
+## cronrunner.py 
+Run from cron. Runs a single experiment
+## webtime.py
+Runs a single experiment
+
+# Research Questions
 
 * What kinds of time skews are observed? Buchholz and Tjaden observed several main categories:
 

@@ -1,7 +1,13 @@
 #!/usr/bin/python3
 #
 # cronrunner.py:
-# meant to be called from cron. Automatically runs webtime if another one is not running
+# meant to be called from cron every 5 minutes...
+# Attempts to get a lock on __file__.
+# IF LOCKS: another copy isn't running.
+#      - run webtime.py
+# IF DOESN"T LOCK: another copy is running
+#      - exit gracefully
+
 
 import sys
 if sys.version < '3':
@@ -44,8 +50,10 @@ if __name__=="__main__":
             exit(0)
             
 
-    # Make sure mySQL works. We do this here so that we don't report that we can't connect to MySQL after the loop starts.
-    # We cache the results in w to avoid reundent connections to the MySQL server.
+    # Make sure mySQL works. We do this here so that we don't report
+    # that we can't connect to MySQL after the loop starts.  We cache
+    # the results in w to avoid reundent connections to the MySQL
+    # server.
     
     mysql_connection = db.mysql_connect(config)
     c = mysql_connection.cursor()
@@ -53,18 +61,29 @@ if __name__=="__main__":
         print("MySQL Connected")
 
     # If we are repeating, run self recursively (remove repeat args)
-    while True and not args.debug:
-        try:
-            delay = int(config['cron']['repeat'])
-        except RuntimeError as e:
-            delay = DEFAULT_DELAY
-            
-        t0 = time.time()
-        res = subprocess.call([sys.executable,'webtime.py'])
-        t1 = time.time()
-        took = t1-t0
-        if took < DEFAULT_DELAY:
-            time.sleep(DEFAULT_DELAY - took)
+    try:
+        delay = int(config['cron']['repeat'])
+    except RuntimeError as e:
+        delay = DEFAULT_DELAY
 
-    # finally, release our lock. But this will never happen
+    t0 = time.time()
+    res = subprocess.call([sys.executable,'webtime.py','--cron','--config',args.config])
+    t1 = time.time()
+    took = t1-t0
+
+    # TODO: Log in the database our start and end time
+
+    import logging
+    import logging.handlers
+
+    my_logger = logging.getLogger(__file__)
+    my_logger.setLevel(logging.DEBUG)
+
+    handler = logging.handlers.SysLogHandler(address = '/dev/log')
+
+    my_logger.addHandler(handler)
+
+    my_logger.info('Completed. took={}'.format(took))
+
+    # finally, release our lock, so we can catch it again
     fcntl.flock(fd,fcntl.LOCK_UN)

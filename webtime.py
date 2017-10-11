@@ -14,7 +14,6 @@ mysql = db.get_mysql()
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
 
-
 prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
 
 def ip2long(ip):
@@ -46,8 +45,12 @@ def s_to_hms(secs):
 
 
 class WebTime():
-    """Webtime class. qdatetime is a datetime object when the query was made, rdatetime is the datetime returned by the remote system."""
-    def __init__(self,qhost=None,qipaddr=None,qdatetime=None,qduration=None,rdatetime=None,rcode=None,dateline=None):
+    """Webtime class. Represents a query to a remote web server.
+    @param qdatetime - a datetime object when the query was made
+    @param rdatetime - the datetime returned by the remote system.
+    """
+    def __init__(self,qhost=None,qipaddr=None,qdatetime=None,
+                 qduration=None,rdatetime=None,rcode=None,dateline=None):
         def fixtime(dt):
             try:
                 return dt.astimezone(pytz.utc)
@@ -92,25 +95,13 @@ class WebTime():
     def __repr__(self):
         return "<WebTime {} {} {} {}>".format(self.qhost,self.qipaddr,self.qdatetime,self.rdatetime)
 
-#
-# Do we record?
-#
-def webtime_wrong_time(wt):
-    return math.fabs(wt.offset_seconds()) > args.mintime if wt else None
+    def wrong_time(self):
+        """Returns true if time is off by more than minimum time."""
+        return math.fabs(self.offset_seconds()) > args.mintime if wt else None
 
-def webtime_record(wt):
-    if "time.gov" in wt.qhost.lower(): # internal control
-        return True
-    return webtime_wrong_time(wt)
-
-def alexa_hosts():
-    # Read the top-1m.csv file if we are not using USG domains
-    hosts = set()
-    for line in csv.reader(open("top-1m.csv"),delimiter=','):
-        hosts.add(line[1])
-    return hosts
-    # do the study
-
+    def should_record(self):
+        """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
+        return ("time.gov" in self.qhost.lower()) or self.wrong_time(wt)
 
 class WebLogger:
     def __init__(self,debug=False):
@@ -135,19 +126,6 @@ class WebLogger:
         try:
             c.execute(cmd,args)
             self.mysql_execute_count += 1
-        #except pymysql.err.InternalError as e:
-        #    print("ERROR: pymysql.err.InternalError: {}".format(cmd % args))
-        #    self.mysql_reconnect()
-        #    
-        #except pymysql.err.ProgrammingError as e:
-        #    print("ERROR: pymysql.err.ProgrammingError: {}".format(cmd % args))
-        #    self.mysql_reconnect()
-        #    
-        #except _mysql_exceptions.OperationalError as e:
-        #    print("Error: _mysql_exceptions.OperationalError: {}".format(cmd % args))
-        #    print(repr(e))
-        #    self.mysql_reconnect()
-
         except Exception as e:
             print("ERROR: {}:\n {}".format(repr(e),cmd % args))
             self.mysql_reconnect()
@@ -263,14 +241,12 @@ class WebLogger:
                                    (wt.qhost,wt.qipaddr,wt.qdate()))
                 ip_id = c.fetchone()[0]
                 self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
-            if c and webtime_wrong_time(wt):
+            if c and wt.wrong_time():
                 # We got a response and it's the wrong time
                 self.mysql_execute(c,"update dated set wtcount=wtcount+1 where id=%s",(ip_id))
             if wt:
                 # We got a wrong time
                 yield wt
-
-
 
     def queryhost(self,qhost):
         """Query the host and stores the bad time reads in the times database if they are off."""
@@ -301,43 +277,14 @@ class WebLogger:
                 if conn: conn.commit()
 
 
-def load_hosts(c,hosts,flag):
-    for host in hosts:
-        c.execute("insert ignore into hosts (host,usg) values (%s,%s)",(host,flag))
-    conn.commit()
-    exit(0)
-
-def mysql_stats(c):
-    global max_id
-    c = conn.cursor()
-    if args.debug: 
-        print(time.asctime())
-    for table in ["times","dated"]:
-        c.execute("select count(*) from "+table)
-        p = c.fetchone()[0]
-        if table not in start_rows:
-            print("Start Rows in {}: {:,}".format(table,p))
-        else:
-            print("End Rows in {}: {:,} ({:,} new)".format(table,p,p-start_rows[table]))
-        start_rows[table] = p
-
-    c.execute("select max(id) from dated")
-    max_id = c.fetchone()[0]
-        
-    if args.debug:
-        print("New dated rows:")
-        c.execute("select * from dated where id>%s",(max_id,))
-        for row in c.fetchall():
-            print(row)
-
-
 if __name__=="__main__":
     import argparse
     import configparser
-    import fcntl
     import sys
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--cron',action='store_true',help='Indicates that it was run from cronrunner')
+    parser.add_argument('--config',help='specify config file')
     parser.add_argument('--usg',action='store_true',help="Only check USG websites")
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--mysql",action="store_true",help="write results to MySQL DB",default=True)
@@ -348,38 +295,20 @@ if __name__=="__main__":
     parser.add_argument("--mintime",type=float,default=MIN_TIME,help="Don't record times shorter than this.")
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--host",help="Specify a host for a specific, one-time check")
-    parser.add_argument("--duration", type=int, default=0, help="Repeat experiment for number of hours")
-    parser.add_argument("--repeat",type=int,default=0,help="Times to repeat experiment")
-    parser.add_argument("--norepeat",action="store_true",help="Used internally to implement repeating")
-    parser.add_argument("--daemon",action="store_true",help="Run as a daemon, forever")
-    parser.add_argument("--dumpschema",action="store_true")
-    parser.add_argument("--loadusg",action="store_true",help="Load USG table")
-    parser.add_argument("--loadalexa",action="store_true",help="Load Alexa table")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
 
     args = parser.parse_args()
-    config = db.get_config(args)
 
-    if args.daemon:
-        # Running as a daemon. Make sure only one of us is running
-        fd = os.open(__file__,os.O_RDONLY)
-        if fd>0:
-            try:
-                fcntl.flock(fd,fcntl.LOCK_EX)
-            except IOError:
-                print("Could not acquire lock")
-                exit(1)
+    import configparser 
+    config = configparser.ConfigParser() # create a config parser
+    db.mysql_prep(config)                # prep it with default MySQL parameters
+    config.read(args.config)             # read the config file
 
-    if args.dumpschema:
-        mc = config["mysql"]
-        cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], '-d',mc['db']]
-        print(cmd)
-        subprocess.call(cmd)
-        exit(0)
+    # Make sure MySQL works. We do this here so that we don't report
+    # that we can't connect to MySQL after the loop starts.  We cache
+    # the results in w to avoid reundent connections to the MySQL
+    # server.
 
-
-    # Make sure mySQL works. We do this here so that we don't report that we can't connect to MySQL after the loop starts.
-    # We cache the results in w to avoid reundent connections to the MySQL server.
     w = WebLogger(args.debug)
     if args.mysql:
         w.mysql_config = config["mysql"]
@@ -387,35 +316,7 @@ if __name__=="__main__":
         c = conn.cursor()
         if args.debug: print("MySQL Connected")
 
-    if args.loadusg:   load_hosts(c,usg_hosts(),1)
-    if args.loadalexa: load_hosts(c,alexa_hosts(),0)
-
-    # If we are repeating, run self recursively (remove repeat args)
-    if args.repeat and not args.norepeat and not args.duration:
-        for r in range(args.repeat):
-            print("**************************************")
-            print("**************** {:4} ****************".format(r))
-            print("**************************************")
-            print(time.asctime())
-            subprocess.call([sys.executable] + ["-W ignore"] + sys.argv + ["--norepeat"])
-        exit(0)
-
-    if args.duration and not args.norepeat and not args.repeat:
-        starttime = time.time()
-        rundur = args.duration*60*60
-        count = 0
-        avg_runtime = 0
-        while (time.time()-starttime+avg_runtime+60 < rundur):
-            runstart = time.time()
-            count += 1
-            print("**************************************")
-            print("**************** {:4} ****************".format(count))
-            print("**************************************")
-            print(time.asctime())
-            subprocess.call([sys.executable] + ["-W ignore"] + sys.argv + ["--norepeat"])
-            runtime = time.time() - runstart
-            avg_runtime = avg_runtime + ((runtime-avg_runtime)/count)
-        exit(0)
+    TODO: GET THE URLS TO CHECK
 
     #
     # Get the list of URLs to check
@@ -430,7 +331,6 @@ if __name__=="__main__":
     pool  = Pool(args.threads)
 
     start_rows = {}
-    if args.mysql: mysql_stats(c)
 
     time_start = time.time()
 
@@ -445,5 +345,3 @@ if __name__=="__main__":
           .format(dcount,s_to_hms(time_end-time_start),dcount/(time_end-time_start)))
     if args.mysql: mysql_stats(c)
 
-    # finally, release our lock
-    fcntl.flock(fd,fcntl.LOCK_UN)

@@ -19,16 +19,10 @@ sudo yum install -y python34 python34-pytest python34-setuptools python34-scipy 
 sudo pip install --upgrade pip
 sudo pip3 install --upgrade pip3
 sudo pip3 install matplotlib pytest bs4 lxml PyMySQL3
+sudo pip3 install pytest
 
 # Oh, this works better; it gets python3.6
 # https://www.digitalocean.com/community/tutorials/how-to-install-python-3-and-set-up-a-local-programming-environment-on-centos-7
 # sudo yum -y install https://centos7.iuscommunity.org/ius-release.rpm
 # sudo yum -y install python36u
-
-# Set up the Centos Databse
-sudo mysql_secure_installation
-echo run the following commands
-echo "mysql -uroot -p<yourpassword> timedb < schema.sql"
-echo "mysql -uroot"
-echo "GRANT ALL PRIVILEGES on timedb.* to dbuser@'localhost' IDENTIFIED BY '<dbuserpassword>';"
 
