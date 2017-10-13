@@ -96,11 +96,9 @@ class WebTime():
         return self.qdatetime.time().isoformat()
     def __repr__(self):
         return "<WebTime {} {} {} {}>".format(self.qhost,self.qipaddr,self.qdatetime,self.rdatetime)
-
     def wrong_time(self):
         """Returns true if time is off by more than minimum time."""
         return math.fabs(self.offset_seconds()) > args.mintime if wt else None
-
     def should_record(self):
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return ("time.gov" in self.qhost.lower()) or self.wrong_time(wt)
@@ -110,16 +108,16 @@ def WebTimeExp(domain,ipaddr,proto='http',retry=DEFAULT_RETRY_COUNT,timeout=DEFA
     """Find the webtime of a particular domain and IP address"""
     import requests,socket,email,sys
     url = "{}://{}/".format(proto,domain)
-    for i in range(args.retry):
+    for i in range(retry):
         s = requests.Session()
         try:
             t0 = time.time()
-            r = s.head(url,timeout=args.timeout,allow_redirects=False)
+            r = s.head(url,timeout=timeout,allow_redirects=False)
             t1 = time.time()
         except RuntimeException as e:
             if self.debug: print("ERROR {} requests.RequestException {} {}".format(e,domain,ipaddr))
             continue
-        val = r.headers("Date")
+        val = r.headers["Date"]
         try:
             date = email.utils.parsedate_to_datetime(val)
         except TypeError:
@@ -132,7 +130,7 @@ def WebTimeExp(domain,ipaddr,proto='http',retry=DEFAULT_RETRY_COUNT,timeout=DEFA
         qduration = t1-t0
         qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
         return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,qduration=qduration,
-                       rdatetime=date,rcode=r.code)
+                       rdatetime=date,rcode=r.status_code)
     # Too many retries
     if self.debug: print("ERROR too many retries")
     return None
@@ -187,7 +185,7 @@ class WebLogger:
                 continue
             except http.client.HTTPException:
                 continue        # typically "got more than 100 headers"
-            val = r.getheader("Date")
+            val = r.getheader["Date"]
             try:
                 date = email.utils.parsedate_to_datetime(val)
             except TypeError:

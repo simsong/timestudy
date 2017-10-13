@@ -25,3 +25,7 @@ def test_WebTime():
     assert w.qdate()=="2017-10-13"
     assert w.qtime()=="03:05:36"
 
+def test_WebTimeExp():
+    w = WebTimeExp('time.glb.nist.gov','132.163.4.22')
+    assert w.offset() < datetime.timedelta(seconds=5)       # we should be off by less than 5 seconds
+
