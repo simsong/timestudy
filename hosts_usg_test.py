@@ -1,6 +1,6 @@
 import pytest
 
-from usg import *
+from hosts_usg import *
 
 def test_url_to_hostname():
     assert url_to_hostname("http://www.nist.gov/") == 'www.nist.gov'

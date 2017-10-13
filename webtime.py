@@ -7,9 +7,9 @@ import time,datetime,pytz
 import subprocess
 import sys
 import math
-
 import db
-mysql = db.get_mysql()
+
+mysql = db.get_mysql_driver()
 
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
@@ -104,6 +104,14 @@ class WebTime():
         return ("time.gov" in self.qhost.lower()) or self.wrong_time(wt)
 
 class WebLogger:
+    """This class is the web logging engine. It's a bit of a mess right now, in that it also maintains the MySQL connection.
+    Key methods:
+    .mysql_connect() - reconnects if not connected. This should be moved to another class
+    .mysql_execute(c,cmd,args) - execute a MySQL command. Why is cursor an arg and not an instance variable?
+    .webtime_ip(domain,ipaddr) - get the time for domain,ipaddr. Not an external entry point.
+    .webtime(qhost,cursor=None) - get the webtime for every IP address for qhost; cursor is the MySQL cursor.
+    .queryhost(qhost)      - 
+    """
     def __init__(self,debug=False):
         self.mysql_config = None
         self.connected = None
@@ -180,7 +188,7 @@ class WebLogger:
         return None
         
 
-    def webtime(self,qhost,c):
+    def webtime(self,qhost,cursor=None):
         """
         Given the domain, get the IP addresses and query each one. 
         Updates the dated table.
@@ -199,19 +207,19 @@ class WebLogger:
         qtime = tq.time().isoformat()
         qdate = tq.date().isoformat()
 
-        if c:
-            t0 = time.time()
-            self.mysql_execute(c,"insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)",
-                               (qhost,qdate,qtime))
-            t1 = time.time()
-            td = t1-t0
-            self.mysql_execute(c,"select id from dated where host=%s and ipaddr='' and qdate=%s",
-                               (qhost,qdate))
-            host_id = c.fetchone()
-            if host_id:
-                # Update the query count for the hostname
-                self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
-            self.mysql_execute(c,"update hosts set qdatetime=now() where host=%s",(qhost,))
+        # Update the dates for this host
+        t0 = time.time()
+        self.mysql_execute(cursor,"insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)",
+                           (qhost,qdate,qtime))
+        t1 = time.time()
+        td = t1-t0
+        self.mysql_execute(cursor,"select id from dated where host=%s and ipaddr='' and qdate=%s",
+                           (qhost,qdate))
+        host_id = c.fetchone()
+        if host_id:
+            # Update the query count for the hostname
+            self.mysql_execute(cursor,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
+        self.mysql_execute(c,"update hosts set qdatetime=now() where host=%s",(qhost,))
 
         try:
             if self.debug: print("DEBUG qhost={}".format(qhost))
@@ -219,31 +227,32 @@ class WebLogger:
             ipaddrs = [i[4][0] for i in a]
             if self.debug: print("DEBUG   qhost={} ipaddrs={}".format(qhost,ipaddrs))
         except socket.gaierror:
-            if host_id: self.mysql_execute(c,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            if host_id: self.mysql_execute(cursor,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
             if self.debug: print("ERROR socket.aierror {} ".format(qhost))
             return
         except socket.herror:
-            if host_id: self.mysql_execute(c,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            if host_id: self.mysql_execute(cursor,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
             if self.debug: print("ERROR socket.herror {}".format(qhost))
             return
-        # Try each IP address
+
+        # Check each IP address for this host
         for ipaddr in set(ipaddrs): # do each one once
             # Query the IP address
             wt = self.webtime_ip(qhost, ipaddr)
             if self.debug: 
                 print("DEBUG   qhost={} ipaddr={:39} wt={}".format(qhost,ipaddr,wt))
-            if c and wt:
+            if cursor and wt:
                 # Note that we are going to query this IP address (again)
                 isv6 = 1 if ":" in ipaddr else 0
-                self.mysql_execute(c,"insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
+                self.mysql_execute(cursor,"insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
                                    (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
-                self.mysql_execute(c,"select id from dated where host=%s and ipaddr=%s and qdate=%s",
+                self.mysql_execute(cursor,"select id from dated where host=%s and ipaddr=%s and qdate=%s",
                                    (wt.qhost,wt.qipaddr,wt.qdate()))
                 ip_id = c.fetchone()[0]
-                self.mysql_execute(c,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
-            if c and wt.wrong_time():
+                self.mysql_execute(cursor,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
+            if cursor and wt.wrong_time():
                 # We got a response and it's the wrong time
-                self.mysql_execute(c,"update dated set wtcount=wtcount+1 where id=%s",(ip_id))
+                self.mysql_execute(cursor,"update dated set wtcount=wtcount+1 where id=%s",(ip_id))
             if wt:
                 # We got a wrong time
                 yield wt
@@ -299,10 +308,7 @@ if __name__=="__main__":
 
     args = parser.parse_args()
 
-    import configparser 
-    config = configparser.ConfigParser() # create a config parser
-    db.mysql_prep(config)                # prep it with default MySQL parameters
-    config.read(args.config)             # read the config file
+    config = db.get_mysql_config(args.config)       # prep it with default MySQL parameters
 
     # Make sure MySQL works. We do this here so that we don't report
     # that we can't connect to MySQL after the loop starts.  We cache
@@ -311,8 +317,8 @@ if __name__=="__main__":
 
     w = WebLogger(args.debug)
     if args.mysql:
-        w.mysql_config = config["mysql"]
-        conn = w.mysql_connect(cache=False)       # test it out
+        dbcon = db.mysql(config)
+        conn = dbcon.mysql_connect(cache=False)       # test it out
         c = conn.cursor()
         if args.debug: print("MySQL Connected")
 
