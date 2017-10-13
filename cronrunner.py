@@ -21,12 +21,22 @@ import subprocess
 import sys
 import math
 import db
+import fcntl
 
 
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
 DEFAULT_DELAY = 300
 
+def getlock(fname):
+    fd = os.open(fname,os.O_RDONLY)
+    if fd>0:
+        try:
+            fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB) # non-blocking
+        except IOError:
+            raise RuntimeError("Could not acquire lock")
+    return fd
+    
 if __name__=="__main__":
     import argparse
     import configparser
@@ -38,33 +48,21 @@ if __name__=="__main__":
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
 
     args   = parser.parse_args()
-    config = db.get_config(args)
+    config = db.get_mysql_config(args.config)
 
     # Running from cron. Make sure only one of us is running. If another is running, exit
-    fd = os.open(__file__,os.O_RDONLY)
-    if fd>0:
-        try:
-            fcntl.flock(fd,fcntl.LOCK_EX)
-        except IOError:
-            print("Could not acquire lock")
-            exit(0)
+    fd = getlock(__file__)
             
-
     # Make sure mySQL works. We do this here so that we don't report
     # that we can't connect to MySQL after the loop starts.  We cache
     # the results in w to avoid reundent connections to the MySQL
     # server.
     
+
     mysql_connection = db.mysql_connect(config)
     c = mysql_connection.cursor()
     if args.debug:
         print("MySQL Connected")
-
-    # If we are repeating, run self recursively (remove repeat args)
-    try:
-        delay = int(config['cron']['repeat'])
-    except RuntimeError as e:
-        delay = DEFAULT_DELAY
 
     t0 = time.time()
     res = subprocess.call([sys.executable,'webtime.py','--cron','--config',args.config])
@@ -82,7 +80,6 @@ if __name__=="__main__":
     handler = logging.handlers.SysLogHandler(address = '/dev/log')
 
     my_logger.addHandler(handler)
-
     my_logger.info('Completed. took={}'.format(took))
 
     # finally, release our lock, so we can catch it again
