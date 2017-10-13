@@ -23,10 +23,10 @@ def usg_from_nist():
              for link in soup.findAll('a', attrs={'href': re.compile("^https?://")})]
 
 def usg_from_analytics():
+    """Return a list of USG hosts from analytics.usa.gov"""
     URL = "https://analytics.usa.gov/data/live/sites.csv"
     r = requests.get(URL)
     return r.text.splitlines()
-
 
 if __name__=="__main__":
     print("usg_from_analytics:")

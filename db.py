@@ -93,7 +93,18 @@ class mysql:
                 self.mysql_config['port'],
                 self.mysql_config['db']))
             raise e
+
+    def select(self,cmd,args=None):
+        """execute an SQL command and return the cursor, which can be used as an iterator"""
+        cursor = self.conn.cursor()
+        cursor.execute(cmd,args)
+        return cursor
     
+    def select1(self,cmd,args=None):
+        """execute an SQL command and return the first row"""
+        cursor = self.select(cmd,args)
+        return cursor.fetchone()
+
 def mysql_stats(c):
     global max_id
     c = conn.cursor()
