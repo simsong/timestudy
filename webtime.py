@@ -13,6 +13,8 @@ mysql = db.get_mysql_driver()
 
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
+DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
+DEFAULT_TIMEOUT = 5                     # default timeout, in seconds
 
 prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
 
@@ -24,8 +26,9 @@ def ip2long(ip):
     packedIP = socket.inet_aton(ip)
     return struct.unpack("!L", packedIP)[0]
 
-
 def s_to_hms(secs):
+    """Returns a second as an [sign]hour:min:sec string.
+    Space for sign is always present"""
     def factor(secs,period):
         return (secs // period,secs % period)
 
@@ -45,12 +48,12 @@ def s_to_hms(secs):
 
 
 class WebTime():
-    """Webtime class. Represents a query to a remote web server.
+    """Webtime class. Represents a query to a remote web server and the response.
     @param qdatetime - a datetime object when the query was made
     @param rdatetime - the datetime returned by the remote system.
     """
     def __init__(self,qhost=None,qipaddr=None,qdatetime=None,
-                 qduration=None,rdatetime=None,rcode=None,dateline=None):
+                 qduration=None,rdatetime=None,rcode=None):
         def fixtime(dt):
             try:
                 return dt.astimezone(pytz.utc)
@@ -62,7 +65,6 @@ class WebTime():
         self.qduration  = qduration
         self.rdatetime  = fixtime(rdatetime)
         self.rcode      = rcode
-        self.dateline   = dateline
 
         # Make sure that datetimes are aware
 
@@ -103,8 +105,41 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return ("time.gov" in self.qhost.lower()) or self.wrong_time(wt)
 
+def WebTimeExp(domain,ipaddr,proto='http',retry=DEFAULT_RETRY_COUNT,timeout=DEFAULT_TIMEOUT):
+    """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
+    """Find the webtime of a particular domain and IP address"""
+    import requests,socket,email,sys
+    url = "{}://{}/".format(proto,domain)
+    for i in range(args.retry):
+        s = requests.Session()
+        try:
+            t0 = time.time()
+            r = s.head(url,timeout=args.timeout,allow_redirects=False)
+            t1 = time.time()
+        except RuntimeException as e:
+            if self.debug: print("ERROR {} requests.RequestException {} {}".format(e,domain,ipaddr))
+            continue
+        val = r.headers("Date")
+        try:
+            date = email.utils.parsedate_to_datetime(val)
+        except TypeError:
+            continue        # no date!
+        except ValueError:
+            f = open("error.log","a")
+            f.write("{} now: {} host: {} ipaddr: {}  Date: {}".format(time.localtime(),time.time(),domain,ipaddr,date))
+            f.close()
+            continue
+        qduration = t1-t0
+        qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
+        return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,qduration=qduration,
+                       rdatetime=date,rcode=r.code)
+    # Too many retries
+    if self.debug: print("ERROR too many retries")
+    return None
+        
+        
 class WebLogger:
-    """This class is the web logging engine. It's a bit of a mess right now, in that it also maintains the MySQL connection.
+    """This class is the web logging engine. 
     Key methods:
     .mysql_connect() - reconnects if not connected. This should be moved to another class
     .mysql_execute(c,cmd,args) - execute a MySQL command. Why is cursor an arg and not an instance variable?
@@ -112,31 +147,13 @@ class WebLogger:
     .webtime(qhost,cursor=None) - get the webtime for every IP address for qhost; cursor is the MySQL cursor.
     .queryhost(qhost)      - 
     """
-    def __init__(self,debug=False):
-        self.mysql_config = None
-        self.connected = None
+    def __init__(self,db,debug=False):
+        """Create the object.
+        @param db - a proxied database connection
+        @param debug - if we are debugging
+        """
+        self.db        = db
         self.debug     = debug
-
-    def mysql_connect(self,cache=False):
-        if self.connected:
-            return self.connected
-        self.conn
-        self.connected = True
-        try:
-        
-    def mysql_reconnect(self):
-        if self.connected:
-            self.connected.close() # close the current connection
-            self.connected = None  # delete the object
-            self.mysql_connect(cache=True)
-
-    def mysql_execute(self,c,cmd,args):
-        try:
-            c.execute(cmd,args)
-            self.mysql_execute_count += 1
-        except Exception as e:
-            print("ERROR: {}:\n {}".format(repr(e),cmd % args))
-            self.mysql_reconnect()
 
     def webtime_ip(self,domain,ipaddr):
         """Find the webtime of a particular domain and IP address"""
@@ -182,7 +199,7 @@ class WebLogger:
             qduration = t1-t0
             qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
             return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,qduration=qduration,
-                           rdatetime=date,rcode=r.code,dateline=date)
+                           rdatetime=date,rcode=r.code)
         # Too many retries
         if self.debug: print("ERROR too many retries")
         return None
@@ -322,7 +339,7 @@ if __name__=="__main__":
         c = conn.cursor()
         if args.debug: print("MySQL Connected")
 
-    TODO: GET THE URLS TO CHECK
+    #TODO: GET THE URLS TO CHECK
 
     #
     # Get the list of URLs to check
