@@ -56,6 +56,7 @@ class mysql:
     """Encapsulate a MySQL connection"""
     def __init__(self,config):
         self.mysql_config = config['mysql']
+        self.conn = None
 
     def send_schema(self,schema):
         c = self.conn.cursor()
@@ -104,6 +105,11 @@ class mysql:
         """execute an SQL command and return the first row"""
         cursor = self.select(cmd,args)
         return cursor.fetchone()
+
+    def close(self):
+        if self.conn:
+            del self.conn           # delete the connection if it exists
+            self.conn = None
 
 def mysql_stats(c):
     global max_id

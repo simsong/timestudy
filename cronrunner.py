@@ -37,6 +37,19 @@ def getlock(fname):
             raise RuntimeError("Could not acquire lock")
     return fd
     
+
+def logger_info(msg):
+    """Log something to the INFO facility. Doesn't cache open connection"""
+
+    import logging
+    import logging.handlers
+
+    my_logger = logging.getLogger(__file__)
+    my_logger.setLevel(logging.INFO)
+    my_logger.addHandler(logging.handlers.SysLogHandler(address = '/dev/log'))
+    my_logger.info(msg)
+
+
 if __name__=="__main__":
     import argparse
     import configparser
@@ -58,11 +71,13 @@ if __name__=="__main__":
     # the results in w to avoid reundent connections to the MySQL
     # server.
     
-
-    mysql_connection = db.mysql_connect(config)
-    c = mysql_connection.cursor()
-    if args.debug:
-        print("MySQL Connected")
+    config = db.get_mysql_config("config.ini")
+    d = db.mysql(config)
+    d.connect()
+    ver = d.select1("select version();")[0]
+    assert type(ver)==str and ver[0]>='5'
+    d.close()
+    
 
     t0 = time.time()
     res = subprocess.call([sys.executable,'webtime.py','--cron','--config',args.config])
@@ -71,16 +86,7 @@ if __name__=="__main__":
 
     # TODO: Log in the database our start and end time
 
-    import logging
-    import logging.handlers
-
-    my_logger = logging.getLogger(__file__)
-    my_logger.setLevel(logging.DEBUG)
-
-    handler = logging.handlers.SysLogHandler(address = '/dev/log')
-
-    my_logger.addHandler(handler)
-    my_logger.info('Completed. took={}'.format(took))
+    logger_info('Completed. took={}'.format(took))
 
     # finally, release our lock, so we can catch it again
     fcntl.flock(fd,fcntl.LOCK_UN)
