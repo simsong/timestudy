@@ -13,7 +13,7 @@ def test_mysql():
     config = db.get_mysql_config("config.ini")
     d = db.mysql(config)
     d.connect()
-    ver = d.select1("select version();")[0]
+    ver = d.mysql_version()
     assert type(ver)==str
     assert ver[0]>='5'
     assert 'DB' in ver

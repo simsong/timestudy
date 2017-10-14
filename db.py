@@ -11,6 +11,7 @@ if sys.version < '3':
 
 DEFAULT_MYSQL_DB   = 'timedb'
 DEFAULT_MYSQL_PORT = 3306
+DEFAULT_MAX_EXECUTES = 0     # reconnect after 
 
 # Common DB and Config Routines
 # Find a MySQL driver..
@@ -55,8 +56,10 @@ def mysql_dump(config):
 class mysql:
     """Encapsulate a MySQL connection"""
     def __init__(self,config):
-        self.mysql_config = config['mysql']
-        self.conn = None
+        self.mysql_config  = config['mysql']
+        self.conn          = None
+        self.execute_count = 0  # count number of executes
+        self.mysql_max_executes = DEFAULT_MAX_EXECUTES
 
     def send_schema(self,schema):
         c = self.conn.cursor()
@@ -85,7 +88,7 @@ class mysql:
             self.conn.cursor().execute("set innodb_lock_wait_timeout=20")
             self.conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")
             self.conn.cursor().execute("SET time_zone = '+00:00'")
-            self.upgrade_schema()
+
         except RuntimeError as e:
             print("Cannot connect to mysqld. host={} user={} passwd={} port={} db={}".format(
                 self.mysql_config['host'],
@@ -95,16 +98,28 @@ class mysql:
                 self.mysql_config['db']))
             raise e
 
-    def select(self,cmd,args=None):
-        """execute an SQL command and return the cursor, which can be used as an iterator"""
+    def execute(self,cmd,args=None):
+        """Execute an SQL command and return the cursor, which can be used as an iterator.
+        Connect to the database if necessary."""
+        self.execute_count += 1
+        if self.mysql_max_executes and self.execute_count > self.mysql_max_executes:
+            self.close()        # close out and reconnect
+        if not self.conn:
+            self.connect()
         cursor = self.conn.cursor()
         cursor.execute(cmd,args)
         return cursor
     
     def select1(self,cmd,args=None):
         """execute an SQL command and return the first row"""
-        cursor = self.select(cmd,args)
+        cursor = self.execute(cmd,args)
         return cursor.fetchone()
+
+    def mysql_version(self):
+        return self.select1("select version();")[0]
+
+    def commit(self):
+        self.conn.commit()
 
     def close(self):
         if self.conn:
@@ -146,11 +161,7 @@ if __name__=="__main__":
     parser.add_argument("--dumpschema",action="store_true")
 
     args = parser.parse_args()
-
-    import configparser 
-    config = configparser.ConfigParser() # create a config parser
-    db.mysql_prep(config)                # prep it with default MySQL parameters
-    config.read(args.config)             # read the config file
+    config = get_mysql_config(args.config)
 
     if args.dumpschema:
         mysql_dumpschema(config)

@@ -1,6 +1,10 @@
 import py.test
 from webtime import *
 
+GOOD_TIME = 'time.glb.nist.gov' # for a good time, call...
+GOOD_TIME_IP = '132.163.4.22'
+GOOD_TIME_CORRECT = 5           # our clock should be within this many seconds of the GOOD TIME
+
 def test_s_to_hms():
     assert s_to_hms(0)==" 00:00:00"
     assert s_to_hms(10)==" 00:00:10"
@@ -26,6 +30,18 @@ def test_WebTime():
     assert w.qtime()=="03:05:36"
 
 def test_WebTimeExp():
-    w = WebTimeExp('time.glb.nist.gov','132.163.4.22')
-    assert w.offset() < datetime.timedelta(seconds=5)       # we should be off by less than 5 seconds
+    w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP)
+    assert w.offset() < datetime.timedelta(seconds=GOOD_TIME_CORRECT)       # we should be off by less than 5 seconds
 
+
+def test_get_ip_addrs():
+    addrs = get_ip_addrs("google-public-dns-a.google.com")
+    assert "8.8.8.8" in addrs
+
+def test_WebTimeExperiment():
+    import db
+    config = db.get_mysql_config("config.ini")
+    db     = db.mysql(config)
+    w      = WebTimeExperiment(db)
+    assert(w.db == db)
+    assert(w.debug == False)
