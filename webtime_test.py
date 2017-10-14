@@ -39,9 +39,19 @@ def test_get_ip_addrs():
     assert "8.8.8.8" in addrs
 
 def test_WebTimeExperiment():
+    import time,datetime
     import db
     config = db.get_mysql_config("config.ini")
-    db     = db.mysql(config)
-    w      = WebTimeExperiment(db)
-    assert(w.db == db)
+    mdb    = db.mysql(config)
+    mdb.upgrade_schema()
+    w      = WebTimeExperiment(mdb)
+    assert(w.db == mdb)
     assert(w.debug == False)
+
+    qhost = GOOD_TIME
+
+    w.queryhost(qhost)
+
+    # Make sure that host is in the database now
+    s = mdb.select1("select max(id),ipaddr,max(qdate) from dated where host=%s limit 1",(GOOD_TIME))
+    assert s[2]==datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()

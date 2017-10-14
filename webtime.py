@@ -11,7 +11,7 @@ import db
 
 mysql = db.get_mysql_driver()
 
-MIN_TIME = 1.0                # Resolution of remote websites
+MIN_TIME = 3.0                          # Don't record more off than this
 CONFIG_INI = "config.ini"
 DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
 DEFAULT_TIMEOUT = 5                     # default timeout, in seconds
@@ -53,7 +53,7 @@ class WebTime():
     @param rdatetime - the datetime returned by the remote system.
     """
     def __init__(self,qhost=None,qipaddr=None,qdatetime=None,
-                 qduration=None,rdatetime=None,rcode=None):
+                 qduration=None,rdatetime=None,rcode=None,mintime=MIN_TIME):
         def fixtime(dt):
             try:
                 return dt.astimezone(pytz.utc)
@@ -65,6 +65,7 @@ class WebTime():
         self.qduration  = qduration
         self.rdatetime  = fixtime(rdatetime)
         self.rcode      = rcode
+        self.mintime    = mintime
 
         # Make sure that datetimes are aware
 
@@ -98,10 +99,10 @@ class WebTime():
         return "<WebTime {} {} {} {}>".format(self.qhost,self.qipaddr,self.qdatetime,self.rdatetime)
     def wrong_time(self):
         """Returns true if time is off by more than minimum time."""
-        return math.fabs(self.offset_seconds()) > args.mintime if wt else None
+        return math.fabs(self.offset_seconds()) > self.mintime
     def should_record(self):
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
-        return ("time.gov" in self.qhost.lower()) or self.wrong_time(wt)
+        return ("time.gov" in self.qhost.lower()) or self.wrong_time()
 
 def WebTimeExp(*,domain=None,ipaddr=None,proto='http',retry=DEFAULT_RETRY_COUNT,timeout=DEFAULT_TIMEOUT):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
@@ -165,12 +166,7 @@ class WebTimeExperiment:
         Return a WebTime object for each IP address.
         """
         import time
-        import http
-        from http import client
-        import email
         import datetime
-        import socket
-        import sys
 
         if self.debug: print("DEBUG PID{} webtime({})".format(os.getpid(),qhost))
 
@@ -181,33 +177,35 @@ class WebTimeExperiment:
 
         # Update the dates for this host
         # 
-        db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)",
+        self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)",
                            (qhost,qdate,qtime))
-        cursor = db.execute("select id from dated where host=%s and ipaddr='' and qdate=%s",
+        host_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s",
                            (qhost,qdate))
-        host_id = cursor.fetchone()
         if not host_id:
             raise RuntimeError("Could not create host_id for host={} qdate={}".format(host,qdate))
 
         # Update the query count for the hostname
-        db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
-        db.execute("update hosts set qdatetime=now() where host=%s",(qhost,))
+        self.db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
+        self.db.execute("update hosts set qdatetime=now() where host=%s",(qhost,))
 
         # Try to get the IPaddresses for the host
         try:
             ipaddrs = get_ip_addrs(qhost)
             if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
         except socket.gaierror:
-            db.execute(cursor,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
             if self.debug: print("ERROR socket.aierror {} ".format(qhost))
             return
         except socket.herror:
-            db.mysql_execute(cursor,"update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            self.db.mysql_execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
             if self.debug: print("ERROR socket.herror {}".format(qhost))
             return
 
         # Are we supposed to record all of the responses for this host?
-        record_all = db.select1("select recordall from hosts_v6test where host=%s",(qhost))[0]
+        try:
+            record_all = self.db.select1("select recordall from hosts where host=%s",(qhost))[0]
+        except TypeError:
+            record_all = 0
 
         # Check each IP address for this host. Yield a wt object for each that is found
         for ipaddr in set(ipaddrs): # do each one once
@@ -219,24 +217,23 @@ class WebTimeExperiment:
                 continue
             # Note that we are going to query this IP address (again)
             isv6 = 1 if ":" in ipaddr else 0
-            db.execute(cursor,"insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
+            self.db.execute("insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
                                (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
-            db.execute(cursor,"select id from dated where host=%s and ipaddr=%s and qdate=%s",
-                               (wt.qhost,wt.qipaddr,wt.qdate()))
-            ip_id = c.fetchone()[0]
-            db.execute(cursor,"update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
+            ip_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s",
+                               (wt.qhost,wt.qipaddr,wt.qdate()))[0]
+            self.db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),ip_id))
             if wt.wrong_time():
                 # We got a response and it's the wrong time
-                self.mysql_execute(cursor,"update dated set wtcount=wtcount+1 where id=%s",(ip_id))
-            if wt.should_record() or record_all>0:
+                self.mysql_execute("update dated set wtcount=wtcount+1 where id=%s",(ip_id))
+            if wt.should_record() or record_all:
                 if args.verbose: 
                     print("{:35} {:20} {:30} {}".format(wt.qhost,wt.qipaddr,wt.pdiff(),wt.rdatetime))
-                db.execute(cursor,"insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
+                self.db.execute("insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
                            "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
                            (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
                             wt.qduration,wt.rdatetime_iso(),
                             wt.qdatetime_iso(),wt.rdatetime_iso()))
-                db.commit()
+                self.db.commit()
 
 
 if __name__=="__main__":

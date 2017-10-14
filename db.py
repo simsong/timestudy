@@ -66,10 +66,12 @@ class mysql:
         for stmt in schema.split(";"):
             stmt = stmt.strip()
             if stmt:
+                print("send ",stmt)
                 c.execute(stmt)
 
     def upgrade_schema(self):
         """Upgrade schema if necessary"""
+        self.connect()
         cursor = self.conn.cursor()
         res = cursor.execute("show tables like 'metadata'")
         if res:
