@@ -106,16 +106,16 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return self.wrong_time() or (self.qhost.lower() in ALWAYS_RECORD_DOMAINS)
 
-def WebTimeExp(*,domain=None,ipaddr=None,proto='http',retry=DEFAULT_RETRY_COUNT,timeout=DEFAULT_TIMEOUT):
+def WebTimeExp(*,domain=None,ipaddr=None,proto='http',config):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
     """Find the webtime of a particular domain and IP address"""
     import requests,socket,email,sys
     url = "{}://{}/".format(proto,domain)
-    for i in range(retry):
+    for i in range(config.getint('webtime','retry')):
         s = requests.Session()
         try:
             t0 = time.time()
-            r = s.head(url,timeout=timeout,allow_redirects=False)
+            r = s.head(url,timeout=config.getint('webtime','timeout'),allow_redirects=False)
             t1 = time.time()
         except RuntimeException as e:
             if self.debug: print("ERROR {} requests.RequestException {} {}".format(e,domain,ipaddr))
@@ -159,6 +159,7 @@ class QueryHostEngine:
         @param debug - if we are debugging
         """
         assert type(config)==configparser.ConfigParser
+        self.config    = config
         self.db        = db.mysql( config)
         self.debug     = debug
 
@@ -223,7 +224,7 @@ class QueryHostEngine:
         # Check each IP address for this host. Yield a wt object for each that is found
         for ipaddr in set(ipaddrs): # do each one once
             # Query the IP address
-            wt = WebTimeExp(domain=qhost,ipaddr=ipaddr)
+            wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
             print("wt=",wt)
             if self.debug: 
                 print("DEBUG   qhost={} ipaddr={:39} wt={}".format(qhost,ipaddr,wt))
@@ -272,9 +273,6 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
-    parser.add_argument("--verbose",action="store_true",help="output to STDOUT")
-    parser.add_argument("--retry",type=int,default=2,help="Times to retry each web server")
-    parser.add_argument("--mintime",type=float,default=MIN_TIME,help="Don't record times shorter than this.")
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
 

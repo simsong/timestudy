@@ -1,5 +1,6 @@
 import py.test
 from webtime import *
+import db
 
 GOOD_TIME = 'time.glb.nist.gov' # for a good time, call...
 GOOD_TIME_IP = '132.163.4.22'
@@ -50,7 +51,7 @@ def test_WebTime():
 
 
 def test_WebTimeExp():
-    w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP)
+    w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP,config=db.get_mysql_config("config.ini"))
     assert w.offset() < datetime.timedelta(seconds=GOOD_TIME_CORRECT)       # we should be off by less than 5 seconds
 
 
@@ -60,7 +61,6 @@ def test_get_ip_addrs():
 
 def test_QueryHostEngine():
     import time,datetime
-    import db
     config = db.get_mysql_config("config.ini")
     mdb    = db.mysql(config)
     mdb.upgrade_schema()
