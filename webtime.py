@@ -243,7 +243,7 @@ class QueryHostEngine:
             if wt.should_record() or record_all:
                 self.db.execute("insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
                            "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
-                           (wt.qhost,wt.qipaddr,wt.qdatetime_iso(),
+                           (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
                             wt.qduration,wt.rdatetime_iso(),
                             wt.qdatetime_iso(),wt.rdatetime_iso()))
         self.db.commit()
