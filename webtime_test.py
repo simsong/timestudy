@@ -15,19 +15,39 @@ def test_s_to_hms():
 
 def test_WebTime():
     import email
-    t1 = 'Fri, 13 Oct 2017 03:05:36 GMT'
-    t2 = 'Fri, 13 Oct 2017 03:05:37 GMT'
+    qdate = 'Fri, 13 Oct 2017 03:05:36 GMT'
+    rdate = 'Fri, 13 Oct 2017 09:05:37 GMT' # far off
     w = WebTime(qhost='example',
                 qipaddr='10.0.0.1',
-                qdatetime=email.utils.parsedate_to_datetime(t1),
-                qduration=1.0,
-                rdatetime=email.utils.parsedate_to_datetime(t2),
+                qdatetime=email.utils.parsedate_to_datetime(qdate),
+                qduration=1.0, 
+                rdatetime=email.utils.parsedate_to_datetime(qdate), # the same
                 rcode=200)
     assert w.rcode==200
     assert w.qduration
-    assert w.pdiff()==" 00:00:01"
+    assert w.pdiff()==" 00:00:00"
     assert w.qdate()=="2017-10-13"
     assert w.qtime()=="03:05:36"
+    assert w.should_record()==False
+    
+    w = WebTime(qhost='example2',
+                qipaddr='10.0.0.1',
+                qdatetime=email.utils.parsedate_to_datetime(qdate),
+                qduration=1,  #
+                rdatetime=email.utils.parsedate_to_datetime(rdate), # very far off
+                rcode=200)
+    assert w.should_record()==True
+
+    # time.nist.gov should always be recorded
+    w = WebTime(qhost='time.nist.gov',
+                qipaddr='10.0.0.1',
+                qdatetime=email.utils.parsedate_to_datetime(qdate),
+                qduration=1.0,  # long enough to require alerting
+                rdatetime=email.utils.parsedate_to_datetime(qdate),
+                rcode=200)
+    assert w.should_record()==True
+
+
 
 def test_WebTimeExp():
     w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP)
@@ -53,5 +73,12 @@ def test_WebTimeExperiment():
     w.queryhost(qhost)
 
     # Make sure that host is in the database now
+    # We do this by making sure that there is an entry in the database for 'today'
+    # Because 'today' may change between the start and the end, we measure it twice,
+    # and we only do the assert if the day hasn't changed
+    day0 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
     s = mdb.select1("select max(id),ipaddr,max(qdate) from dated where host=%s limit 1",(GOOD_TIME))
-    assert s[2]==datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
+    day1 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
+    assert s[2] in [day0,day1]
+    if day0==day1:
+        assert s[2]==day0

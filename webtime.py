@@ -15,6 +15,7 @@ MIN_TIME = 3.0                          # Don't record more off than this
 CONFIG_INI = "config.ini"
 DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
 DEFAULT_TIMEOUT = 5                     # default timeout, in seconds
+ALWAYS_RECORD_DOMAINS = set(['time.gov','time.nist.gov','ntp1.glb.nist.gov'])
 
 prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
 
@@ -67,7 +68,8 @@ class WebTime():
         self.rcode      = rcode
         self.mintime    = mintime
 
-        # Make sure that datetimes are aware
+    def __repr__(self):
+        return "<WebTime qhost:{} qipaddr:{} qdatetime:{} offset_seconds:{}>".format(self.qhost,self.qipaddr,self.qdatetime,self.offset_seconds())
 
     def offset(self):
         try:
@@ -95,14 +97,12 @@ class WebTime():
         return self.qdatetime.date().isoformat()
     def qtime(self):
         return self.qdatetime.time().isoformat()
-    def __repr__(self):
-        return "<WebTime {} {} {} {}>".format(self.qhost,self.qipaddr,self.qdatetime,self.rdatetime)
     def wrong_time(self):
         """Returns true if time is off by more than minimum time."""
         return math.fabs(self.offset_seconds()) > self.mintime
     def should_record(self):
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
-        return ("time.gov" in self.qhost.lower()) or self.wrong_time()
+        return self.wrong_time() or (self.qhost.lower() in ALWAYS_RECORD_DOMAINS)
 
 def WebTimeExp(*,domain=None,ipaddr=None,proto='http',retry=DEFAULT_RETRY_COUNT,timeout=DEFAULT_TIMEOUT):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
