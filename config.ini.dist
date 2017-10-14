@@ -1,3 +1,16 @@
+[DEFAULT]
+threads=8
+
+[hosts]
+# source specifies a file and function to call
+source=hosts_usg.usg_from_analytics()
+
+# host_order can be as_is or random.
+order=random
+
+# repcount is the number of times to rapidly ask the host what time it is
+repcount=3
+
 [mysql]
 user=[yourusername]
 host=[yourhostname]

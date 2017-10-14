@@ -4,7 +4,7 @@
 # db.py:
 # Code for working with the MySQL database
 
-import sys
+import os,sys
 if sys.version < '3':
     raise RuntimeError("Requires Python 3")
 
@@ -33,10 +33,11 @@ def get_mysql_driver():
     raise RuntimeError("Cannot find MySQL driver")
 
 def get_mysql_config(fname=None):
-    """Get a ConfigParser that's preped file a MySQL connections"""
+    """Get a ConfigParser that's preped with the MySQL defaults"""
     import configparser
     config = configparser.ConfigParser()
-    config["mysql"] = {"host":"",
+    config.add_section('mysql')
+    config['mysql'] = {"host":"",
                        "user":"",
                        "passwd":"",
                        "port":DEFAULT_MYSQL_PORT,
@@ -48,6 +49,7 @@ def get_mysql_config(fname=None):
 
 
 def mysql_dump(config):
+    """Using the config, dump MySQL schema"""
     mc = config["mysql"]
     cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], '-d',mc['db']]
     print(cmd)
@@ -56,10 +58,11 @@ def mysql_dump(config):
 class mysql:
     """Encapsulate a MySQL connection"""
     def __init__(self,config):
-        self.mysql_config  = config['mysql']
+        self.config        = config
         self.conn          = None
         self.execute_count = 0  # count number of executes
         self.mysql_max_executes = DEFAULT_MAX_EXECUTES
+        self.debug         = config.getint('mysql','debug')
 
     def send_schema(self,schema):
         c = self.conn.cursor()
@@ -76,28 +79,27 @@ class mysql:
         res = cursor.execute("show tables like 'metadata'")
         if res:
             return
-        print("Upgrading schema...")
         self.send_schema(open("schema_v1_v2.sql","r").read())
 
     def connect(self):
         self.mysql = get_mysql_driver()
         try:
-            self.conn = self.mysql.connect(host=self.mysql_config["host"],
-                                      port=int(self.mysql_config["port"]),
-                                      user=self.mysql_config["user"],
-                                      passwd=self.mysql_config['passwd'],
-                                      db=self.mysql_config['db'])
+            self.conn = self.mysql.connect(host=self.config.get("mysql","host"),
+                                           port=self.config.getint("mysql",'port'),
+                                           user=self.config.get("mysql","user"),
+                                           passwd=self.config.get("mysql","passwd"),
+                                           db=self.config.get("mysql","db"))
             self.conn.cursor().execute("set innodb_lock_wait_timeout=20")
             self.conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")
             self.conn.cursor().execute("SET time_zone = '+00:00'")
 
         except RuntimeError as e:
             print("Cannot connect to mysqld. host={} user={} passwd={} port={} db={}".format(
-                self.mysql_config['host'],
-                self.mysql_config['user'],
-                self.mysql_config['passwd'],
-                self.mysql_config['port'],
-                self.mysql_config['db']))
+                self.config.get('mysql','host'),
+                self.config.get('mysql','user'),
+                self.config.get('mysql','passwd'),
+                self.config.get('mysql','port'),
+                self.config.get('mysql','db')))
             raise e
 
     def execute(self,cmd,args=None):
@@ -108,6 +110,7 @@ class mysql:
             self.close()        # close out and reconnect
         if not self.conn:
             self.connect()
+        if self.debug: print("db.execute({},{}) PID:{}".format(cmd,args,os.getpid()))
         cursor = self.conn.cursor()
         cursor.execute(cmd,args)
         return cursor
@@ -121,6 +124,7 @@ class mysql:
         return self.select1("select version();")[0]
 
     def commit(self):
+        if self.debug: print("db.COMMIT PID:{}".format(os.getpid()))
         self.conn.commit()
 
     def close(self):

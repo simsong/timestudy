@@ -11,9 +11,9 @@ def test_get_mysql_config():
 
 def test_mysql():
     config = db.get_mysql_config("config.ini")
-    d = db.mysql(config)
-    d.connect()
-    ver = d.mysql_version()
+    mdb    = db.mysql(config)
+    mdb.connect()
+    ver = mdb.mysql_version()
     assert type(ver)==str
     assert ver[0]>='5'
     assert 'DB' in ver

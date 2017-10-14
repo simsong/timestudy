@@ -64,8 +64,8 @@ def test_QueryHostEngine():
     config = db.get_mysql_config("config.ini")
     mdb    = db.mysql(config)
     mdb.upgrade_schema()
-    qhe      = QueryHostEngine(mdb)
-    assert(qhe.db == mdb)
+    qhe      = QueryHostEngine(config)
+    assert(type(qhe.db) == type(mdb))
     assert(qhe.debug == False)
 
     # Run a query!
