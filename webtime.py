@@ -142,7 +142,7 @@ def get_ip_addrs(hostname):
     import socket
     return set([i[4][0] for i in socket.getaddrinfo(hostname, 0)])
 
-class WebTimeExperiment:
+class QueryHostEngine:
     """This class implements is the web experiment engine. A collection of objects are meant to be called in a multiprocessing pool.
     Each object creates a connection to the SQL database. The queryhost(qhost) entry point performs a lookup for all IP addresses
     Associated with the host.  Currently we do not try to use t he prefixes, but we could.
@@ -235,6 +235,12 @@ class WebTimeExperiment:
                             wt.qdatetime_iso(),wt.rdatetime_iso()))
                 self.db.commit()
 
+def get_hosts(config):
+    """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """
+    (source_file,source_function) = config['hosts']['source'].split('.')
+    module = __import__(source_file)
+    func = getattr(module,source_function)
+    return func()
 
 if __name__=="__main__":
     import argparse
@@ -242,7 +248,6 @@ if __name__=="__main__":
     import sys
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--usg',action='store_true',help="Only check USG websites")
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
     parser.add_argument("--threads","-j",type=int,default=8,help="Number of threads")
@@ -262,16 +267,19 @@ if __name__=="__main__":
 
     dbcon = db.mysql(config)
     ver = dbcon.mysql_version()
-    if args.debug: print("MySQL Version {}".format(ver))
+    if args.debug:
+        print("MySQL Version {}".format(ver))
     # Upgrade the schema if necessary
     dbcon.upgrade_schema()
+
+    # Get the hosts
+    hosts = get_hosts(config)
 
     #TODO: GET THE URLS TO CHECK
 
     #
     # Get the list of URLs to check
     #
-    #usgflag = 1 if args.usg else 0
     usgflag = 1
     c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
     hosts = [row[0] for row in c.fetchall()]

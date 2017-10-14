@@ -58,19 +58,19 @@ def test_get_ip_addrs():
     addrs = get_ip_addrs("google-public-dns-a.google.com")
     assert "8.8.8.8" in addrs
 
-def test_WebTimeExperiment():
+def test_QueryHostEngine():
     import time,datetime
     import db
     config = db.get_mysql_config("config.ini")
     mdb    = db.mysql(config)
     mdb.upgrade_schema()
-    w      = WebTimeExperiment(mdb)
-    assert(w.db == mdb)
-    assert(w.debug == False)
+    qhe      = QueryHostEngine(mdb)
+    assert(qhe.db == mdb)
+    assert(qhe.debug == False)
 
+    # Run a query!
     qhost = GOOD_TIME
-
-    w.queryhost(qhost)
+    qhe.queryhost(qhost)
 
     # Make sure that host is in the database now
     # We do this by making sure that there is an entry in the database for 'today'
@@ -82,3 +82,16 @@ def test_WebTimeExperiment():
     assert s[2] in [day0,day1]
     if day0==day1:
         assert s[2]==day0
+
+SOME_HOSTS=['hosta','hostb','hostc']
+def some_hosts():
+    return SOME_HOSTS
+
+def test_get_hosts():
+    import configparser
+    config = configparser.ConfigParser()
+    config.add_section('hosts')
+    config.set('hosts','source','webtime_test.some_hosts')
+    hosts = get_hosts(config)
+    assert hosts==SOME_HOSTS
+
