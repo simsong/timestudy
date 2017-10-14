@@ -16,6 +16,7 @@ CONFIG_INI = "config.ini"
 DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
 DEFAULT_TIMEOUT = 5                     # default timeout, in seconds
 ALWAYS_RECORD_DOMAINS = set(['time.gov','time.nist.gov','ntp1.glb.nist.gov'])
+DEFAULT_THREADS=8
 
 prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
 
@@ -240,7 +241,17 @@ def get_hosts(config):
     (source_file,source_function) = config['hosts']['source'].split('.')
     module = __import__(source_file)
     func = getattr(module,source_function)
-    return func()
+    order = config['hosts']['order']
+    if order =='random':
+        import random
+        import copy
+        ret = copy.copy(func())
+        random.shuffle(ret)
+        return ret
+    elif order=='as_is':
+        return func()
+    else:
+        raise RuntimeError("hosts:order '{}' must be random or as_is".format(order))
 
 if __name__=="__main__":
     import argparse
@@ -250,7 +261,6 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
-    parser.add_argument("--threads","-j",type=int,default=8,help="Number of threads")
     parser.add_argument("--verbose",action="store_true",help="output to STDOUT")
     parser.add_argument("--retry",type=int,default=2,help="Times to retry each web server")
     parser.add_argument("--mintime",type=float,default=MIN_TIME,help="Don't record times shorter than this.")
@@ -265,41 +275,34 @@ if __name__=="__main__":
     # the results in w to avoid reundent connections to the MySQL
     # server.
 
-    dbcon = db.mysql(config)
-    ver = dbcon.mysql_version()
+    dbc = db.mysql(config)
+    ver = dbc.mysql_version()
     if args.debug:
         print("MySQL Version {}".format(ver))
     # Upgrade the schema if necessary
-    dbcon.upgrade_schema()
+    dbc.upgrade_schema()
 
     # Get the hosts
     hosts = get_hosts(config)
+    if debug:
+        print("Total Hosts: {}".format(len(hosts)))
 
-    #TODO: GET THE URLS TO CHECK
-
-    #
-    # Get the list of URLs to check
-    #
-    usgflag = 1
-    c.execute("select host from hosts where usg=%s order by qdatetime limit %s",(usgflag,args.limit))
-    hosts = [row[0] for row in c.fetchall()]
-    print("Total Hosts: {}".format(len(hosts)))
-
-    from multiprocessing import Pool
-    pool  = Pool(args.threads)
-
-    start_rows = {}
-
+    # Create a QueryHostEngine. It will not connect to the SQL Database until the connection is needed.
+    # If we run in a multiprocessing pool, each process will get its own connection
+    qhe = QueryHostEngine( db.mysql( config ))
+    
+    # Start parallel execution
     time_start = time.time()
 
     # Query the costs, either locally or in the threads
+    threads = config.getint('DEFAULT','threads',DEFAULT_THREADS)
     if args.threads==1:
         [w.queryhost(u) for u in hosts]
     else:
+        from multiprocessing import Pool
+        pool = Pool(args.threads)
         pool.map(w.queryhost, hosts)
     time_end = time.time()
-    dcount = len(hosts)
     print("Total lookups: {:,}  Total time: {}  Lookups/sec: {:.2f}"\
-          .format(dcount,s_to_hms(time_end-time_start),dcount/(time_end-time_start)))
-    if args.mysql: mysql_stats(c)
+          .format(len(hosts),s_to_hms(time_end-time_start),dcount/(time_end-time_start)))
 

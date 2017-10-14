@@ -83,7 +83,7 @@ def test_QueryHostEngine():
     if day0==day1:
         assert s[2]==day0
 
-SOME_HOSTS=['hosta','hostb','hostc']
+SOME_HOSTS=['host{}'.format(i) for i in range(1,100)] # a lot of hosts
 def some_hosts():
     return SOME_HOSTS
 
@@ -92,6 +92,14 @@ def test_get_hosts():
     config = configparser.ConfigParser()
     config.add_section('hosts')
     config.set('hosts','source','webtime_test.some_hosts')
+    config.set('hosts','order','as_is')
     hosts = get_hosts(config)
     assert hosts==SOME_HOSTS
+
+    # test random order
+    config.set('hosts','order','random')
+    rhosts = get_hosts(config)
+    assert len(SOME_HOSTS) == len(rhosts)
+    assert SOME_HOSTS != rhosts
+    assert sorted(SOME_HOSTS) == sorted(rhosts)
 
