@@ -13,11 +13,17 @@ DEFAULT_MYSQL_DB   = 'timedb'
 DEFAULT_MYSQL_PORT = 3306
 DEFAULT_MAX_EXECUTES = 0     # reconnect after 
 
+SCHEMA = ['schema_v1.sql',
+           'schema_v1_v2.sql']
+
 # Common DB and Config Routines
 # Find a MySQL driver..
 
 USE_MYSQLDB=True
 USE_PYMYSQL=False               # ran into error when rowid went larger than 65536
+
+def file_contents(fname):
+    return open(fname,"r").read()
 
 def get_mysql_driver():
     """Return any MySQL driver that's installed"""
@@ -75,6 +81,17 @@ class mysql:
         self.mysql_max_executes = DEFAULT_MAX_EXECUTES
         self.debug         = config.getint('mysql','debug')
 
+    def table_exists(self,tablename):
+        """Return true if tablename is a real table"""
+        cursor = self.conn.cursor()
+        print("table_exist({})".format(tablename))
+        cursor.execute("show tables")
+        print(cursor.fetchall())
+        cursor.execute("show tables like %s",(tablename,))
+        res = cursor.fetchall()
+        print("tables like {} res{}".format(tablename,res))
+        return True if res else False
+
     def send_schema(self,schema):
         c = self.conn.cursor()
         for stmt in schema.split(";"):
@@ -86,12 +103,16 @@ class mysql:
     def upgrade_schema(self):
         """Upgrade schema if necessary"""
         self.connect()
-        cursor = self.conn.cursor()
-        cursor.execute("show tables like 'metadata'")
-        res = cursor.fetchall()
-        if res:
-            return
-        self.send_schema(open("schema_v1_v2.sql","r").read())
+
+        # If metadata table is not present, upgrade from SCHEMA[0] to SCHEMA[1]
+        print("check for upgrade")
+        if not self.table_exists("metadata"):
+            print("upgrade")
+            self.send_schema( file_contents(SCHEMA[1]) )
+            self.execute("insert into metadata values ('schema','1');")
+            self.commit()
+        else:
+            print("no upgrade necessary")
 
     def connect(self):
         self.mysql = get_mysql_driver()

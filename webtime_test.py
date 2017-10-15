@@ -49,7 +49,6 @@ def test_WebTime():
     assert w.should_record()==True
 
 
-
 def test_WebTimeExp():
     w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP,config=db.get_mysql_config("config.ini"))
     assert w.offset() < datetime.timedelta(seconds=GOOD_TIME_CORRECT)       # we should be off by less than 5 seconds
@@ -77,7 +76,7 @@ def test_QueryHostEngine():
     # Because 'today' may change between the start and the end, we measure it twice,
     # and we only do the assert if the day hasn't changed
     day0 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
-    s = mdb.select1("select max(id),ipaddr,max(qdate) from dated where host=%s limit 1",(GOOD_TIME))
+    s = mdb.select1("select max(id),ipaddr,max(qdate) from dated where host=%s limit 1",(GOOD_TIME,))
     day1 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
     assert s[2] in [day0,day1]
     if day0==day1:

@@ -1,7 +1,8 @@
 -- updates to make schema.sql schemav2.sql
 
 ALTER TABLE hosts ADD cohort varchar(256) NOT NULL DEFAULT '';
-ALTER TABLE dated ADD ipv6 int NOT NULL default 0;
+ALTER TABLE times ADD isv6  tinyint(1) NOT NULL default 0;
+ALTER TABLE times ADD https tinyint(1) NOT NULL default 0;
 
 DROP TABLE IF EXISTS `metadata`;
 CREATE TABLE `metadata` (
