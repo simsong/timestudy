@@ -84,12 +84,8 @@ class mysql:
     def table_exists(self,tablename):
         """Return true if tablename is a real table"""
         cursor = self.conn.cursor()
-        print("table_exist({})".format(tablename))
-        cursor.execute("show tables")
-        print(cursor.fetchall())
         cursor.execute("show tables like %s",(tablename,))
         res = cursor.fetchall()
-        print("tables like {} res{}".format(tablename,res))
         return True if res else False
 
     def send_schema(self,schema):

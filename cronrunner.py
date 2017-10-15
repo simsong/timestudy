@@ -56,6 +56,8 @@ if __name__=="__main__":
     import fcntl
     import sys
 
+    logger_info('{} PID {} Started'.format(__file__,os.getpid()))
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="actually run subprocess")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
@@ -64,7 +66,12 @@ if __name__=="__main__":
     config = db.get_mysql_config(args.config)
 
     # Running from cron. Make sure only one of us is running. If another is running, exit
-    fd = getlock(__file__)
+    try:
+        fd = getlock(__file__)
+    except RuntimeError as e:
+        logger_info('{} PID {} could not acquire lock'.format(__file__,os.getpid()))
+        print("{}: Could not acquire lock".format(__file__))
+        exit(0)
             
     # Make sure mySQL works. We do this here so that we don't report
     # that we can't connect to MySQL after the loop starts.  We cache
@@ -80,13 +87,13 @@ if __name__=="__main__":
     
 
     t0 = time.time()
-    res = subprocess.call([sys.executable,'webtime.py','--cron','--config',args.config])
+    res = subprocess.call([sys.executable,'webtime.py','--config',args.config])
     t1 = time.time()
     took = t1-t0
 
     # TODO: Log in the database our start and end time
 
-    logger_info('Completed. took={}'.format(took))
+    logger_info('{} PID {} Completed. took={:.2} seconds'.format(__file__,os.getpid(),took))
 
     # finally, release our lock, so we can catch it again
     fcntl.flock(fd,fcntl.LOCK_UN)
