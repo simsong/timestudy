@@ -136,6 +136,7 @@ class mysql:
             raise e
 
     def execute(self,cmd,args=None):
+        import time
         """Execute an SQL command and return the cursor, which can be used as an iterator.
         Connect to the database if necessary."""
         self.execute_count += 1
@@ -143,9 +144,14 @@ class mysql:
             self.close()        # close out and reconnect
         if not self.conn:
             self.connect()
-        if self.debug: print("db.execute({},{}) PID:{}".format(cmd,args,os.getpid()))
+        if self.debug:
+            print("db.execute({},{}) PID:{} ".format(cmd,args,os.getpid()),end='')
+            t0 = time.time()
         cursor = self.conn.cursor()
         cursor.execute(cmd,args)
+        if self.debug:
+            t1 = time.time()
+            print("{}".format(t1-t0))
         return cursor
     
     def select1(self,cmd,args=None):

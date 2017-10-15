@@ -111,11 +111,11 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return self.wrong_time() or (self.qhost.lower() in ALWAYS_RECORD_DOMAINS)
 
-def WebTimeExp(*,domain=None,ipaddr=None,proto='http',config=None):
+def WebTimeExp(*,domain=None,ipaddr=None,protocol='http',config=None):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
     """Find the webtime of a particular domain and IP address"""
     import requests,socket,email,sys
-    url = "{}://{}/".format(proto,domain)
+    url = "{}://{}/".format(protocol,domain)
     for i in range(config.getint('webtime','retry')):
         s = requests.Session()
         try:
@@ -178,13 +178,18 @@ class QueryHostEngine:
 
     def queryhost_params(self,qhost,ipaddr,protocol,record_all):
         isv6 = 1 if ":" in ipaddr else 0
+        https = 1 if protocol=='https' else 0
         wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
         if not wt:
             return
+        
+
+        # Make sure that the host is in dated for the (host,ipaddr,qdate) combination.
+        # That is the unique key; https is not considered
         self.db.execute("insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
-                           (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
-        id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s",
-                           (wt.qhost,wt.qipaddr,wt.qdate()))[0]
+                        (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
+        id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s ",
+                             (wt.qhost,wt.qipaddr,wt.qdate()))[0]
         cmd = "update dated set qlast=%s,qcount=qcount+1"
         if wt.wrong_time():
             # We got a response and it's the wrong time
@@ -193,9 +198,9 @@ class QueryHostEngine:
         self.db.execute(cmd,(wt.qtime(),id))
 
         if wt.should_record() or record_all:
-            self.db.execute("insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
-                       "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
-                       (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
+            self.db.execute("insert ignore into times (host,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset) "+
+                       "values (%s,%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
+                       (wt.qhost,wt.qipaddr,isv6,https,wt.qdatetime_iso(),
                         wt.qduration,wt.rdatetime_iso(),
                         wt.qdatetime_iso(),wt.rdatetime_iso()))
         self.db.commit()
@@ -237,12 +242,12 @@ class QueryHostEngine:
             ipaddrs = get_ip_addrs(qhost)
             if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
         except socket.gaierror:
-            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,dated_id))
             self.db.commit()
             if self.debug: print("ERROR socket.aierror {} ".format(qhost))
             return
         except socket.herror:
-            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,dated_id))
             self.db.commit()
             if self.debug: print("ERROR socket.herror {}".format(qhost))
             return
