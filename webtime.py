@@ -1,14 +1,20 @@
 #https://support.alexa.com/hc/en-us/articles/200461990-Can-I-get-a-list-of-top-sites-from-an-API-
 #http://s3.amazonaws.com/alexa-static/top-1m.csv.zip
 
+import sys
+if sys.version < '3':
+    raise RuntimeError("Requires Python 3")
+
 import os
 import csv
 import time,datetime,pytz
 import subprocess
-import sys
 import math
 import db
 import configparser
+import socket
+import struct
+
 
 mysql = db.get_mysql_driver()
 
@@ -22,7 +28,6 @@ DEFAULT_THREADS=8
 prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
 
 def ip2long(ip):
-    import socket,struct
     """
     Convert an IP string to long
     """
@@ -106,7 +111,7 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return self.wrong_time() or (self.qhost.lower() in ALWAYS_RECORD_DOMAINS)
 
-def WebTimeExp(*,domain=None,ipaddr=None,proto='http',config):
+def WebTimeExp(*,domain=None,ipaddr=None,proto='http',config=None):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
     """Find the webtime of a particular domain and IP address"""
     import requests,socket,email,sys
@@ -117,10 +122,19 @@ def WebTimeExp(*,domain=None,ipaddr=None,proto='http',config):
             t0 = time.time()
             r = s.head(url,timeout=config.getint('webtime','timeout'),allow_redirects=False)
             t1 = time.time()
-        except RuntimeException as e:
-            if self.debug: print("ERROR {} requests.RequestException {} {}".format(e,domain,ipaddr))
-            continue
-        val = r.headers["Date"]
+        except requests.exceptions.ConnectTimeout as e:
+            return None
+        except requests.exceptions.ConnectionError as e:
+            return None
+        except requests.exceptions.ReadTimeout as e:
+            return None
+
+        try:
+            val = r.headers["Date"]
+        except KeyError:
+            # No date in header; we see these on redirects from the Big IP appliance
+            # that is trying to force people to use https:
+            return None
         try:
             date = email.utils.parsedate_to_datetime(val)
         except TypeError:
@@ -141,7 +155,6 @@ def WebTimeExp(*,domain=None,ipaddr=None,proto='http',config):
         
 def get_ip_addrs(hostname):
     """Get all of the IP addresses for a hostname"""
-    import socket
     return set([i[4][0] for i in socket.getaddrinfo(hostname, 0)])
 
 class QueryHostEngine:
@@ -187,13 +200,8 @@ class QueryHostEngine:
 
         # Update the dates for this host
         # 
-        self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)",
-                           (qhost,qdate,qtime))
-        host_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s",
-                           (qhost,qdate))
-        print("hostid=",host_id)
-        if not host_id:
-            raise RuntimeError("Could not create host_id for host={} qdate={}".format(host,qdate))
+        self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)", (qhost,qdate,qtime))
+        host_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s", (qhost,qdate))[0]
 
         # Update the query count for the hostname
         self.db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
@@ -208,52 +216,52 @@ class QueryHostEngine:
             if self.debug: print("ERROR socket.aierror {} ".format(qhost))
             return
         except socket.herror:
-            self.db.mysql_execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
             if self.debug: print("ERROR socket.herror {}".format(qhost))
             return
 
         # Are we supposed to record all of the responses for this host?
         try:
-            record_all = self.db.select1("select recordall from hosts where host=%s",(qhost))[0]
+            record_all = self.db.select1("select recordall from hosts where host=%s",(qhost,))[0]
         except TypeError:
             record_all = 0
 
-        print("record_all=",record_all)
-
-
         # Check each IP address for this host. Yield a wt object for each that is found
         for ipaddr in set(ipaddrs): # do each one once
+            #
             # Query the IP address
-            wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
-            print("wt=",wt)
-            if self.debug: 
-                print("DEBUG   qhost={} ipaddr={:39} wt={}".format(qhost,ipaddr,wt))
-            if not wt:
-                continue
-            # Note that we are going to query this IP address (again)
+            #
             isv6 = 1 if ":" in ipaddr else 0
-            self.db.execute("insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
-                               (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
-            id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s",
-                               (wt.qhost,wt.qipaddr,wt.qdate()))[0]
-            print("id=",id)
-            self.db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),id))
-            if wt.wrong_time():
-                # We got a response and it's the wrong time
-                self.mysql_execute("update dated set wtcount=wtcount+1 where id=%s",(id))
-            if wt.should_record() or record_all:
-                self.db.execute("insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
-                           "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
-                           (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
-                            wt.qduration,wt.rdatetime_iso(),
-                            wt.qdatetime_iso(),wt.rdatetime_iso()))
+            for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
+                wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
+                if wt:
+                    self.db.execute("insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
+                                       (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
+                    id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s",
+                                       (wt.qhost,wt.qipaddr,wt.qdate()))[0]
+                    self.db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),id))
+                    if wt.wrong_time():
+                        # We got a response and it's the wrong time
+                        self.db.execute("update dated set wtcount=wtcount+1 where id=%s",(id,))
+                    if wt.should_record() or record_all:
+                        self.db.execute("insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
+                                   "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
+                                   (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
+                                    wt.qduration,wt.rdatetime_iso(),
+                                    wt.qdatetime_iso(),wt.rdatetime_iso()))
         self.db.commit()
 
 def get_hosts(config):
     """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """
     (source_file,source_function) = config['hosts']['source'].split('.')
+    source_function = source_function.replace("()","") # remove () if it was provided
     module = __import__(source_file)
-    func = getattr(module,source_function)
+    print("module=",module)
+    print(dir(module))
+    try:
+        func = getattr(module,source_function)
+    except AttributeError:
+        raise RuntimeError("module '{}' does not have a function '{}'".format(source_file,source_function))
     order = config['hosts']['order']
     if order =='random':
         import random
@@ -275,6 +283,7 @@ if __name__=="__main__":
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
+    parser.add_argument("-j","--threads",type=int,help="Specify number of threads",default=0)
 
     args = parser.parse_args()
     config = db.get_mysql_config(args.config)       # prep it with default MySQL parameters
@@ -293,7 +302,7 @@ if __name__=="__main__":
 
     # Get the hosts
     hosts = get_hosts(config)
-    if debug:
+    if args.debug:
         print("Total Hosts: {}".format(len(hosts)))
 
     # Create a QueryHostEngine. It will not connect to the SQL Database until the connection is needed.
@@ -304,14 +313,16 @@ if __name__=="__main__":
     time_start = time.time()
 
     # Query the costs, either locally or in the threads
-    threads = config.getint('DEFAULT','threads',DEFAULT_THREADS)
-    if thread==1:
-        [w.queryhost(u) for u in hosts]
+    threads = config.getint('DEFAULT','threads',fallback=DEFAULT_THREADS)
+    if args.threads:
+        threads = args.threads
+    if threads==1:
+        [qhe.queryhost(u) for u in hosts]
     else:
         from multiprocessing import Pool
-        pool = Pool(args.threads)
-        pool.map(w.queryhost, hosts)
+        pool = Pool(threads)
+        pool.map(qhe.queryhost, hosts)
     time_end = time.time()
-    print("Total lookups: {:,}  Total time: {}  Queries/sec: {:.2f}"\
-          .format(len(hosts),s_to_hms(time_end-time_start),dcount/(time_end-time_start)))
+    print("Total lookups: {:,}  Total time: {}  Hosts/sec: {:.2f}"\
+          .format(len(hosts),s_to_hms(time_end-time_start),len(hosts)/(time_end-time_start)))
 

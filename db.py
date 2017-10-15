@@ -16,17 +16,28 @@ DEFAULT_MAX_EXECUTES = 0     # reconnect after
 # Common DB and Config Routines
 # Find a MySQL driver..
 
+USE_MYSQLDB=True
+USE_PYMYSQL=False               # ran into error when rowid went larger than 65536
+
 def get_mysql_driver():
     """Return any MySQL driver that's installed"""
     try:
-        import pymysql, pymysql.err
-        return pymysql
+        import mysql.connector
+        return mysql.connector
     except ImportError:
         pass
 
     try:
-        import MySQLdb, _mysql_exceptions
-        return MySQLdb
+        if USE_MYSQLDB:
+            import MySQLdb, _mysql_exceptions
+            return MySQLdb
+    except ImportError:
+        pass
+
+    try:
+        if USE_PYMYSQL:
+            import pymysql, pymysql.err
+            return pymysql
     except ImportError:
         pass
 
@@ -76,7 +87,8 @@ class mysql:
         """Upgrade schema if necessary"""
         self.connect()
         cursor = self.conn.cursor()
-        res = cursor.execute("show tables like 'metadata'")
+        cursor.execute("show tables like 'metadata'")
+        res = cursor.fetchall()
         if res:
             return
         self.send_schema(open("schema_v1_v2.sql","r").read())
