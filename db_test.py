@@ -1,9 +1,11 @@
+import os
 import py.test
 import db
 from db import SCHEMA
 
 def test_create_schema():
     """Test creating a database and upgrading it and killing it"""
+    assert os.path.exists("config.ini")
     config = db.get_mysql_config("config.ini")
     testdb = config.get('mysql','testdb')
 
@@ -58,3 +60,5 @@ def test_mysql():
     assert 'DB' in ver
     
 
+if __name__=="__main__":
+    test_create_schema()

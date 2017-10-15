@@ -176,11 +176,38 @@ class QueryHostEngine:
         self.db        = db.mysql( config)
         self.debug     = debug
 
+    def queryhost_params(self,qhost,ipaddr,protocol,record_all):
+        isv6 = 1 if ":" in ipaddr else 0
+        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
+        if not wt:
+            return
+        self.db.execute("insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
+                           (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
+        id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s",
+                           (wt.qhost,wt.qipaddr,wt.qdate()))[0]
+        cmd = "update dated set qlast=%s,qcount=qcount+1"
+        if wt.wrong_time():
+            # We got a response and it's the wrong time
+            cmd += ",wtcount=wtcount+1"
+        cmd += " where id=%s"
+        self.db.execute(cmd,(wt.qtime(),id))
+
+        if wt.should_record() or record_all:
+            self.db.execute("insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
+                       "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
+                       (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
+                        wt.qduration,wt.rdatetime_iso(),
+                        wt.qdatetime_iso(),wt.rdatetime_iso()))
+        self.db.commit()
+        
+
     def queryhost(self,qhost):
         """
         Given the domain, get the IP addresses and query each one. 
         Updates the dated table.
+        If time should be recorded, update the times table.
         Return a WebTime object for each IP address.
+        NOTE ON SQL: only the dated table is updated, so that is the only one that needs to be locked.
         """
 
         if self.debug:
@@ -194,18 +221,16 @@ class QueryHostEngine:
         qtime = qdatetime.time().isoformat()
         qdate = qdatetime.date().isoformat()
 
-        # Make sure that this host is in the hosts table
-        self.db.execute("insert ignore into hosts (host,qdatetime) values (%s,now())",
-                        (qhost,))
-
-        # Update the dates for this host
-        # 
-        self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,'',%s,%s)", (qhost,qdate,qtime))
-        host_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s", (qhost,qdate))[0]
+        # Note: fields in dated that don't have ipaddr are for all ipaddrs
+        self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'',qdate,qtime))
+        dated_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s", (qhost,qdate))[0]
 
         # Update the query count for the hostname
-        self.db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(qtime,host_id))
-        self.db.execute("update hosts set qdatetime=now() where host=%s",(qhost,))
+        self.db.execute("UPDATE dated SET qlast=%s,qcount=qcount+1 WHERE id=%s",(qtime,dated_id))
+        self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
+
+        # Make sure that this host is in the hosts table
+        self.db.execute("insert ignore into hosts (host,qdatetime) values (%s,now())", (qhost,))
 
         # Try to get the IPaddresses for the host
         try:
@@ -213,10 +238,12 @@ class QueryHostEngine:
             if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
         except socket.gaierror:
             self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            self.db.commit()
             if self.debug: print("ERROR socket.aierror {} ".format(qhost))
             return
         except socket.herror:
             self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,host_id))
+            self.db.commit()
             if self.debug: print("ERROR socket.herror {}".format(qhost))
             return
 
@@ -231,25 +258,9 @@ class QueryHostEngine:
             #
             # Query the IP address
             #
-            isv6 = 1 if ":" in ipaddr else 0
-            for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
-                wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
-                if wt:
-                    self.db.execute("insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
-                                       (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
-                    id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s",
-                                       (wt.qhost,wt.qipaddr,wt.qdate()))[0]
-                    self.db.execute("update dated set qlast=%s,qcount=qcount+1 where id=%s",(wt.qtime(),id))
-                    if wt.wrong_time():
-                        # We got a response and it's the wrong time
-                        self.db.execute("update dated set wtcount=wtcount+1 where id=%s",(id,))
-                    if wt.should_record() or record_all:
-                        self.db.execute("insert ignore into times (host,ipaddr,isv6,qdatetime,qduration,rdatetime,offset) "+
-                                   "values (%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
-                                   (wt.qhost,wt.qipaddr,isv6,wt.qdatetime_iso(),
-                                    wt.qduration,wt.rdatetime_iso(),
-                                    wt.qdatetime_iso(),wt.rdatetime_iso()))
-        self.db.commit()
+            for protocol in self.config.get('hosts','protocol').split(','):
+                for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
+                    self.queryhost_params(qhost,ipaddr,protocol,record_all)
 
 def get_hosts(config):
     """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """
@@ -288,6 +299,9 @@ if __name__=="__main__":
     args = parser.parse_args()
     config = db.get_mysql_config(args.config)       # prep it with default MySQL parameters
 
+    if config.getint('mysql','debug'):
+        args.debug = 1          # override
+
     # Make sure MySQL works. We do this here so that we don't report
     # that we can't connect to MySQL after the loop starts.  We cache
     # the results in w to avoid reundent connections to the MySQL
@@ -302,8 +316,6 @@ if __name__=="__main__":
 
     # Get the hosts
     hosts = get_hosts(config)
-    if args.debug:
-        print("Total Hosts: {}".format(len(hosts)))
 
     # Create a QueryHostEngine. It will not connect to the SQL Database until the connection is needed.
     # If we run in a multiprocessing pool, each process will get its own connection
@@ -311,6 +323,13 @@ if __name__=="__main__":
     
     # Start parallel execution
     time_start = time.time()
+
+    # Determine how many entries in the database at start
+    if args.debug:
+        host_count = len(hosts)
+        print("Total Hosts: {:,}".format(host_count))
+        (qcount0,ecount0,wtcount0) = dbc.select1("select sum(qcount),sum(ecount),sum(wtcount) from dated")
+        print("Initial stats:  queries: {:,}   errors: {:,}   wrong times: {:,}".format(qcount0,ecount0,wtcount0))
 
     # Query the costs, either locally or in the threads
     threads = config.getint('DEFAULT','threads',fallback=DEFAULT_THREADS)
@@ -323,6 +342,12 @@ if __name__=="__main__":
         pool = Pool(threads)
         pool.map(qhe.queryhost, hosts)
     time_end = time.time()
-    print("Total lookups: {:,}  Total time: {}  Hosts/sec: {:.2f}"\
-          .format(len(hosts),s_to_hms(time_end-time_start),len(hosts)/(time_end-time_start)))
+    time_total = time_end-time_start
+
+    # Determine the ending stats
+    if args.debug:
+        (qcount1,ecount1,wtcount1) = dbc.select1("select sum(qcount),sum(ecount),sum(wtcount) from dated")
+        print("Ending stats:  queries: {:,}   errors: {:,}   wrong times: {:,}".format(qcount1,ecount1,wtcount1))
+        print("Total hosts: {:,}  Total time: {}  Hosts/sec: {:.2f}  Queries/sec: {:.2f}"\
+              .format(host_count,s_to_hms(time_total),host_count/time_total,float(qcount1-qcount0)/time_total))
 
