@@ -272,8 +272,6 @@ def get_hosts(config):
     (source_file,source_function) = config['hosts']['source'].split('.')
     source_function = source_function.replace("()","") # remove () if it was provided
     module = __import__(source_file)
-    print("module=",module)
-    print(dir(module))
     try:
         func = getattr(module,source_function)
     except AttributeError:

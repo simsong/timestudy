@@ -105,14 +105,10 @@ class mysql:
         self.connect()
 
         # If metadata table is not present, upgrade from SCHEMA[0] to SCHEMA[1]
-        print("check for upgrade")
         if not self.table_exists("metadata"):
-            print("upgrade")
             self.send_schema( file_contents(SCHEMA[1]) )
             self.execute("insert into metadata values ('schema','1');")
             self.commit()
-        else:
-            print("no upgrade necessary")
 
     def connect(self):
         self.mysql = get_mysql_driver()
