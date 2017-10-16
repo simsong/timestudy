@@ -96,9 +96,10 @@ if __name__=="__main__":
         cmd += " where " + usg_hosts_sql 
     (hostCount,ipaddrCount,date_min,date_max,sumQcount) = dbc.select1(cmd)
 
-    print("Total number of hosts examined: {}  ({} IP addresses)".format(hostCount,ipaddrCount))
+    print("Report generated: {}".format(datetime.datetime.now().isoformat()))
+    print("Total number of hosts examined: {:,}  ({:,} IP addresses)".format(hostCount,ipaddrCount))
     print("Dates of study: {} to {}".format(date_min,date_max))
-    print("Number of time measurements: {}".format(sumQcount))
+    print("Number of time measurements: {:,}".format(sumQcount))
 
     cmd = "select count(distinct host), count(distinct ipaddr) from dated where wtcount>0 "
     if args.usg:
@@ -106,8 +107,8 @@ if __name__=="__main__":
     
     (badHosts,badIpaddrs) = dbc.select1(cmd)
 
-    print("Number of hosts with at least one incorrect time measurement: {} ({:.2f}%)".format(badHosts,badHosts*100.0/hostCount))
-    print("Number of IP addresses with at least one incorrect time measurement: {} ({:.2f}%)".format(badIpaddrs,badIpaddrs*100.0/ipaddrCount))
+    print("Number of hosts with at least one incorrect time measurement: {:,} ({:.2f}%)".format(badHosts,badHosts*100.0/hostCount))
+    print("Number of IP addresses with at least one incorrect time measurement: {:,} ({:.2f}%)".format(badIpaddrs,badIpaddrs*100.0/ipaddrCount))
 
     gen_report(dbc,1,60,"1 to 59 seconds")
     gen_report(dbc,60,3600,"1 minute to 1 hour")
