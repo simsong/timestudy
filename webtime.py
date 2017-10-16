@@ -15,8 +15,7 @@ import configparser
 import socket
 import struct
 
-
-mysql = db.get_mysql_driver()
+#mysql = db.get_mysql_driver()
 
 MIN_TIME = 3.0                          # Don't record more off than this
 CONFIG_INI = "config.ini"

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#
+# hosts_ntp_servers.py:
+# extract the public NTP servers from the Stratum files
+#
 from bs4 import BeautifulSoup, SoupStrainer
 import glob
 import urllib.request

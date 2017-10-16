@@ -77,9 +77,9 @@ StratumTwoTimeServers - The Stratum Two Time Servers
 
 config.ini.dist - Configuration file. Right now it just has database host/name/username/password. Except it doesn't have the password. Put the password in and rename config.ini.
 
-getservers.py --- extracts the servers from the public NTP list and parsers them.
+hosts_ntp_servers.py --- extracts the servers from the public NTP list and parsers them. (Not currently used)
 
-getusg.py --- Grabs the USG servers from usgv6-deploymon.antd.nist.gov. Can we get a better source?
+hosts_usg.py --- Returns the USG hosts from either the NIST list or the analytics list.
 
 ntp.txt --- My notes on NTP servers
 

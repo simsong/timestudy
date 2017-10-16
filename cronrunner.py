@@ -8,11 +8,9 @@
 # IF DOESN"T LOCK: another copy is running
 #      - exit gracefully
 
-
 import sys
 if sys.version < '3':
     raise RuntimeError("Requires Python 3")
-
 
 import os
 import csv
@@ -22,7 +20,6 @@ import sys
 import math
 import db
 import fcntl
-
 
 MIN_TIME = 1.0                # Resolution of remote websites
 CONFIG_INI = "config.ini"
@@ -48,7 +45,6 @@ def logger_info(msg):
     my_logger.setLevel(logging.INFO)
     my_logger.addHandler(logging.handlers.SysLogHandler(address = '/dev/log'))
     my_logger.info(msg)
-
 
 if __name__=="__main__":
     import argparse
@@ -93,7 +89,7 @@ if __name__=="__main__":
 
     # TODO: Log in the database our start and end time
 
-    logger_info('{} PID {} Completed. took={:.2} seconds'.format(__file__,os.getpid(),took))
+    logger_info('{} PID {} Completed. took={:8.2f} seconds'.format(__file__,os.getpid(),took))
 
     # finally, release our lock, so we can catch it again
     fcntl.flock(fd,fcntl.LOCK_UN)
