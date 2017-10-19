@@ -59,7 +59,9 @@ def get_mysql_config(fname=None):
                        "passwd":"",
                        "port":DEFAULT_MYSQL_PORT,
                        "db":DEFAULT_MYSQL_DB,
-                       "mysqldump":"mysqldump" }
+                       "mysqldump":"mysqldump",
+                       "debug":0
+    }
     if fname:
         config.read(fname)
     return config

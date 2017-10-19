@@ -20,7 +20,7 @@ MAX_HOSTS_REPORT = 10
 usg_hosts_sql = " host in (select host from hosts where usg=1) "
 
 def gen_report(dbc,smin,smax,desc):
-    cmd = "select host,max(offset) as oset from times group by host having true "
+    cmd = "select host,max(abs(offset)) as oset from times group by host having true "
     if args.usg:
         cmd += " and " + usg_hosts_sql + " "
     if smin:
@@ -31,6 +31,7 @@ def gen_report(dbc,smin,smax,desc):
     cursor = dbc.execute(cmd)
     hosts = [row[0] for row in cursor.fetchall()]
     print("Hosts where clocks are off {}: {}".format(desc,len(hosts)))
+    print(cmd)
     print("\n")
     if len(hosts)>MAX_HOSTS_REPORT:
         print("Representative hosts:")

@@ -28,6 +28,9 @@ def usg_from_analytics():
     r = requests.get(URL)
     return r.text.splitlines()
 
+def usg_from_both():
+    return list(set(usg_from_nist() + usg_from_analytics()))
+
 if __name__=="__main__":
     print("usg_from_analytics:")
     print(usg_from_analytics())
