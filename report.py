@@ -30,6 +30,7 @@ def gen_report(dbc,smin,smax,desc):
     cmd += " order by host "
     cursor = dbc.execute(cmd)
     hosts = [row[0] for row in cursor.fetchall()]
+    print("Negative time delta means that the remote host thinks that it is in the past.")
     print("Hosts where clocks are off {}: {}".format(desc,len(hosts)))
     print(cmd)
     print("\n")
