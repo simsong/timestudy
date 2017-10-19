@@ -42,6 +42,7 @@ if __name__=="__main__":
 
     form = cgi.FieldStorage()
     q = form.getfirst("q","").lower()
+    q = "".join(filter(lambda ch:ch.isalnum() or ch in "-_.",q))
     
     #print("q={}".format(q))
     print("<form><input type='text' name='q'/><input type='submit'></form>")
