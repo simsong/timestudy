@@ -17,7 +17,7 @@ CONFIG_INI="config.ini"
 def search_host(dbc,host):
     if host=="":
         yield list()
-    for row in dbc.execute("select qdatetime,host,ipaddr,offset from times where host like '%{}%'".format(host)):
+    for row in dbc.execute("select qdatetime,host,ipaddr,offset from times where (host like '%{}%') or (ipaddr like '%{}%')".format(host,host)):
         yield row
     
 

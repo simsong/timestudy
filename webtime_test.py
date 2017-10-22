@@ -102,3 +102,6 @@ def test_get_hosts():
     assert SOME_HOSTS != rhosts
     assert sorted(SOME_HOSTS) == sorted(rhosts)
 
+    # test the one that's there
+    hosts = get_hosts(db.get_mysql_config(CONFIG_INI))
+    assert 100 < len(hosts) < 100000

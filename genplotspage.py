@@ -2,6 +2,7 @@ import os, sys, pymysql, re, operator, time, graphgen
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdt
 from datetime import datetime, timedelta
+import db
 
 def mysql_connect(passwd):
     mc = {"host":"db1.antd.nist.gov",

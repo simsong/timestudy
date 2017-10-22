@@ -87,7 +87,10 @@ if __name__=="__main__":
     config = db.get_mysql_config(args.config)
     dbc    = db.mysql(config)
 
-    hosts = hosts_usg.usg_from_nist()
+    if args.debug:
+        dbc.debug = args.debug
+        print("debug mode")
+
     #
     # 
     # Overall stats
