@@ -1,4 +1,5 @@
 install:
+	install html/index.html		   /var/www/html/
 	install search.py db.py config.ini /var/www/cgi-bin/
 
 top-100m.csv:
