@@ -4,11 +4,12 @@
 # db.py:
 # Code for working with the MySQL database
 
-import os,sys
+import os,sys,subprocess
 if sys.version < '3':
     raise RuntimeError("Requires Python 3")
 
 
+DEFAULT_CONFIG="config.ini"
 DEFAULT_MYSQL_DB   = 'timedb'
 DEFAULT_MYSQL_PORT = 3306
 DEFAULT_MAX_EXECUTES = 0     # reconnect after 
@@ -67,12 +68,12 @@ def get_mysql_config(fname=None):
     return config
 
 
-def mysql_dump(config):
+def mysql_dump(f,config,opts):
     """Using the config, dump MySQL schema"""
     mc = config["mysql"]
-    cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], '-d',mc['db']]
-    print(cmd)
-    return subprocess.call(cmd)
+    cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], opts,mc['db']]
+    sys.stderr.write(" ".join(cmd)+"\n")
+    subprocess.call(cmd,stdout=f)
 
 class mysql:
     """Encapsulate a MySQL connection"""
@@ -196,12 +197,16 @@ if __name__=="__main__":
     import sys
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--config',help='specify config file')
-    parser.add_argument("--dumpschema",action="store_true")
+    parser.add_argument('--config',help='specify config file',default=DEFAULT_CONFIG)
+    parser.add_argument("--dumpschema",help="dump schema to specified file")
+    parser.add_argument("--dumpdb",help="dump db to specified file")
 
     args = parser.parse_args()
     config = get_mysql_config(args.config)
 
     if args.dumpschema:
-        mysql_dumpschema(config)
+        mysql_dump(open(args.dumpschema,"w"),config,'-d')
+
+    if args.dumpdb:
+        mysql_dump(open(args.dumpdb,"w"),config,'-q')
 

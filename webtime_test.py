@@ -14,6 +14,10 @@ def test_s_to_hms():
     assert s_to_hms(3615)==" 01:00:15"
     
 
+def test_get_cname():
+    assert get_cname("nosuchhost")==None
+    assert get_cname("www.media.mit.edu")=="www-prod.media.mit.edu."
+
 def test_WebTime():
     import email
     qdate = 'Fri, 13 Oct 2017 03:05:36 GMT'

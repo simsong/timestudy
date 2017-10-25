@@ -8,4 +8,8 @@ top-100m.csv:
 	/bin/rm -f top-1m.csv.zip
 
 schema.sql:
-	python3 webtime.py --dumpschema > schema.sql
+	python3 db.py --dumpschema schema.sql
+
+backup:
+	python3 db.py --dumpdb database.sql
+

@@ -19,9 +19,7 @@ sudo yum install -y epel-release
 sudo yum install -y python34 python34-pytest python34-setuptools python34-scipy python34-requests python34-pytz python34-tkinter
 sudo pip install --upgrade pip
 sudo pip3 install --upgrade pip3
-sudo pip3 install matplotlib pytest bs4 lxml 
-sudo pip3 install pytest 
-
+sudo pip3 install matplotlib pytest bs4 lxml dnspython pytest 
 # https://stackoverflow.com/questions/46215390/unable-to-find-protobuf-include-directory-when-i-use-pip-install-mysql-connec
 sudo pip3 install mysql-connector==2.1.4
 

@@ -154,6 +154,15 @@ def get_ip_addrs(hostname):
     """Get all of the IP addresses for a hostname"""
     return set([i[4][0] for i in socket.getaddrinfo(hostname, 0)])
 
+def get_cname(hostname):
+    """Return the CNAME for hostname, if it exists"""
+    import dns.resolver
+    try:
+        for rdata in dns.resolver.query(hostname,'CNAME'):
+            return str(rdata.target)
+    except Exception as e:
+        return None
+
 class QueryHostEngine:
     """This class implements is the web experiment engine. A collection of objects are meant to be called in a multiprocessing pool.
     Each object creates a connection to the SQL database. The queryhost(qhost) entry point performs a lookup for all IP addresses
@@ -173,13 +182,12 @@ class QueryHostEngine:
         self.db        = db.mysql( config)
         self.debug     = debug
 
-    def queryhost_params(self,qhost,ipaddr,protocol,record_all):
+    def queryhost_params(self,qhost,cname,ipaddr,protocol,record_all):
         isv6 = 1 if ":" in ipaddr else 0
         https = 1 if protocol=='https' else 0
         wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
         if not wt:
             return
-        
 
         # Make sure that the host is in dated for the (host,ipaddr,qdate) combination.
         # That is the unique key; https is not considered
@@ -195,9 +203,9 @@ class QueryHostEngine:
         self.db.execute(cmd,(wt.qtime(),id))
 
         if wt.should_record() or record_all:
-            self.db.execute("insert ignore into times (host,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset) "+
-                       "values (%s,%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
-                       (wt.qhost,wt.qipaddr,isv6,https,wt.qdatetime_iso(),
+            self.db.execute("insert ignore into times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset) "+
+                       "values (%s,%s,%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
+                       (wt.qhost,cname,wt.qipaddr,isv6,https,wt.qdatetime_iso(),
                         wt.qduration,wt.rdatetime_iso(),
                         wt.qdatetime_iso(),wt.rdatetime_iso()))
         self.db.commit()
@@ -235,6 +243,7 @@ class QueryHostEngine:
         self.db.execute("insert ignore into hosts (host,qdatetime) values (%s,now())", (qhost,))
 
         # Try to get the IPaddresses for the host
+        cname = get_cname(qhost)
         try:
             ipaddrs = get_ip_addrs(qhost)
             if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
@@ -262,7 +271,7 @@ class QueryHostEngine:
             #
             for protocol in self.config.get('hosts','protocol').split(','):
                 for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
-                    self.queryhost_params(qhost,ipaddr,protocol,record_all)
+                    self.queryhost_params(qhost,cname,ipaddr,protocol,record_all)
 
 def get_hosts(config):
     """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """
