@@ -18,6 +18,18 @@ def test_get_cname():
     assert get_cname("nosuchhost")==None
     assert get_cname("www.media.mit.edu")=="www-prod.media.mit.edu."
 
+def test_acast():
+    # [centos@timedb ~]$ host acast.grc.nasa.gov
+    # acast.grc.nasa.gov is an alias for web.grc.nasa.gov.
+    # web.grc.nasa.gov has address 128.156.253.24
+    # web.grc.nasa.gov has IPv6 address 2001:4d0:4310:1040::18
+    # web.grc.nasa.gov mail is handled by 100 mx2.grc.nasa.gov.
+    # web.grc.nasa.gov mail is handled by 100 mx1.grc.nasa.gov.
+    # [centos@timedb ~]$
+    host = 'acast.grc.nasa.gov';
+
+
+
 def test_WebTime():
     import email
     qdate = 'Fri, 13 Oct 2017 03:05:36 GMT'
