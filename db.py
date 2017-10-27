@@ -139,7 +139,16 @@ class mysql:
         if not self.conn:
             self.connect()
         if self.debug:
-            print("db.execute({},{}) PID:{} ".format(cmd,args,os.getpid()),end='')
+            try:
+                if '%s' in cmd:
+                    print("db.execute({}) PID:{} ".format(cmd % args,os.getpid()),end='')
+                else:
+                    assert (args==None)
+                    print("db.execute({}) PID:{} ".format(cmd,os.getpid()),end='')
+            except TypeError as e:
+                print("cmd=",cmd)
+                print("args=",args)
+                raise e
             t0 = time.time()
         cursor = self.conn.cursor()
         cursor.execute(cmd,args)

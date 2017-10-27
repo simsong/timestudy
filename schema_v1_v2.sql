@@ -2,8 +2,11 @@
 
 ALTER TABLE hosts ADD cohort varchar(256) NOT NULL DEFAULT '';
 ALTER TABLE dated ADD https tinyint(1) NOT NULL default 0;
+ALTER TALBE times ADD cname varchar(256) NOT NULL DEFAULT '';
 ALTER TABLE times ADD isv6  tinyint(1) NOT NULL default 0;
 ALTER TABLE times ADD https tinyint(1) NOT NULL default 0;
+ALTER TABLE dated DROP KEY host, add UNIQUE KEY `host` (`host`,`ipaddr`,`qdate`, `https`);
+ALTER TABLE times DROP KEY host, add KEY host (host,ipaddr,qdatetime);
 
 DROP TABLE IF EXISTS `metadata`;
 CREATE TABLE `metadata` (

@@ -106,6 +106,12 @@ def test_QueryHostEngine():
     assert ipaddr > ''            # 
     assert qdate in [day0,day1]   # the day must be when we started or when we stopped
 
+    # Now make sure we got both a http and an https value
+    (id,ipaddr,http) = mdb.select1("select id,ipaddr,https from dated where host=%s and https=0 order by id desc limit 1",(GOOD_TIME,))
+    assert id > 0
+
+    (id,ipaddr,http) = mdb.select1("select id,ipaddr,https from dated where host=%s and https=1 order by id desc limit 1",(GOOD_TIME,))
+    assert id > 0
 
 SOME_HOSTS=['host{}'.format(i) for i in range(1,100)] # a lot of hosts
 def some_hosts():
