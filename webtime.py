@@ -52,6 +52,9 @@ def s_to_hms(secs):
     return ret
 
 
+def should_record_hostname(host):
+    return host.lower() in ALWAYS_RECORD_DOMAINS
+
 class WebTime():
     """Webtime class. Represents a query to a remote web server and the response.
     @param qdatetime - a datetime object when the query was made
@@ -106,7 +109,7 @@ class WebTime():
         return math.fabs(self.offset_seconds()) > self.mintime
     def should_record(self):
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
-        return self.wrong_time() or (self.qhost.lower() in ALWAYS_RECORD_DOMAINS)
+        return self.wrong_time() or should_record_hostname(self.qhost)
 
 def WebTimeExp(*,domain=None,ipaddr=None,protocol='http',config=None):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
@@ -182,25 +185,24 @@ class QueryHostEngine:
         self.db        = db.mysql( config)
         self.debug     = debug
 
-    def queryhost_params(self,qhost,cname,ipaddr,protocol,record_all):
+    def queryhost_params(self,qhost,cname,ipaddr,protocol,dated_id,record_all):
         isv6 = 1 if ":" in ipaddr else 0
         https = 1 if protocol=='https' else 0
-        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
-        if not wt:
-            return
 
-        # Make sure that the host is in dated for the (host,ipaddr,qdate) combination.
-        # That is the unique key; https is not considered
-        self.db.execute("insert ignore into dated (host,ipaddr,isv6,qdate,qfirst) values (%s,%s,%s,%s,%s)",
-                        (wt.qhost,wt.qipaddr,isv6,wt.qdate(),wt.qtime()))
-        id = self.db.select1("select id from dated where host=%s and ipaddr=%s and qdate=%s ",
-                             (wt.qhost,wt.qipaddr,wt.qdate()))[0]
-        cmd = "update dated set qlast=%s,qcount=qcount+1"
-        if wt.wrong_time():
+        # Update the query count for the hostname
+        self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
+
+        cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
+        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
+        if wt and wt.wrong_time():
             # We got a response and it's the wrong time
             cmd += ",wtcount=wtcount+1"
+        if not wt:
+            # Got an error. Increment the error count
+            cmd += ",ecount=ecount+1 "
+
         cmd += " where id=%s"
-        self.db.execute(cmd,(wt.qtime(),id))
+        self.db.execute(cmd, (wt.qtime(),dated_id))
 
         if wt.should_record() or record_all:
             self.db.execute("insert ignore into times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset) "+
@@ -210,7 +212,6 @@ class QueryHostEngine:
                         wt.qdatetime_iso(),wt.rdatetime_iso()))
         self.db.commit()
         
-
     def queryhost(self,qhost):
         """
         Given the domain, get the IP addresses and query each one. 
@@ -231,16 +232,11 @@ class QueryHostEngine:
         qtime = qdatetime.time().isoformat()
         qdate = qdatetime.date().isoformat()
 
-        # Note: fields in dated that don't have ipaddr are for all ipaddrs
-        self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'',qdate,qtime))
-        dated_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s", (qhost,qdate))[0]
-
-        # Update the query count for the hostname
-        self.db.execute("UPDATE dated SET qlast=%s,qcount=qcount+1 WHERE id=%s",(qtime,dated_id))
-        self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
-
         # Make sure that this host is in the hosts table
+        print("self.db.execute...",self.db)
+        print("self.db.debug=",self.db.debug)
         self.db.execute("insert ignore into hosts (host,qdatetime) values (%s,now())", (qhost,))
+        print("added to hosts")
 
         # Try to get the IPaddresses for the host
         cname = get_cname(qhost)
@@ -270,8 +266,15 @@ class QueryHostEngine:
             # Query the IP address
             #
             for protocol in self.config.get('hosts','protocol').split(','):
+                isv6 = 1 if ":" in ipaddr else 0
+                https = 1 if protocol=='https' else 0
+
+                # Make sure that this (host,ipaddr,protocol) combination is in dated
+                self.db.execute("insert ignore into dated (host,ipaddr,isv6,https,qdate,qfirst) values (%s,%s,%s,%s,%s,%s)", (qhost,ipaddr,isv6,https,qdate,qtime))
+                dated_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s", (qhost,qdate))[0]
+
                 for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
-                    self.queryhost_params(qhost,cname,ipaddr,protocol,record_all)
+                    self.queryhost_params(qhost,cname,ipaddr,protocol,dated_id,record_all)
 
 def get_hosts(config):
     """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """

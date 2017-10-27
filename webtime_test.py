@@ -28,7 +28,9 @@ def test_acast():
     # [centos@timedb ~]$
     host = 'acast.grc.nasa.gov';
 
-
+def test_should_record_hostname():
+    assert should_record_hostname("nosuchhost")==False
+    assert should_record_hostname("time.nist.gov")==True
 
 def test_WebTime():
     import email
@@ -79,9 +81,15 @@ def test_QueryHostEngine():
     config = db.get_mysql_config("config.ini")
     mdb    = db.mysql(config)
     mdb.upgrade_schema()
-    qhe      = QueryHostEngine(config)
+    qhe       = QueryHostEngine(config)
     assert(type(qhe.db) == type(mdb))
     assert(qhe.debug == False)
+
+    # Enable debugging. It will print to stdout but only generate output if the test fails
+    mdb.debug = 1
+    qhe.debug = 1
+    qhe.db.debug = 1
+
 
     # Run a query!
     qhost = GOOD_TIME
@@ -92,11 +100,12 @@ def test_QueryHostEngine():
     # Because 'today' may change between the start and the end, we measure it twice,
     # and we only do the assert if the day hasn't changed
     day0 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
-    s = mdb.select1("select max(id),ipaddr,max(qdate) from dated where host=%s limit 1",(GOOD_TIME,))
+    (id,ipaddr,qdate) = mdb.select1("select id,ipaddr,qdate from dated where host=%s order by id desc limit 1",(GOOD_TIME,))
     day1 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
-    assert s[2] in [day0,day1]
-    if day0==day1:
-        assert s[2]==day0
+    assert id > 0                 # make sure id is good
+    assert ipaddr > ''            # 
+    assert qdate in [day0,day1]   # the day must be when we started or when we stopped
+
 
 SOME_HOSTS=['host{}'.format(i) for i in range(1,100)] # a lot of hosts
 def some_hosts():

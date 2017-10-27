@@ -1,0 +1,14 @@
+Cisco Umbrella list of top 1M web sites (by DNS lookup I believe)  Maybe pick of the top 10K?
+http://s3-us-west-1.amazonaws.com/umbrella-static/index.html
+ 
+Universities and Colleges (CSV on page) ~2K
+http://www.searchenginesmarketer.com/list-of-university-and-college-websites/
+ 
+FDIC 1K could be extracted from here: https://www.had-pilot.com/fdic-results.html
+I can’t find a maintained source for that data. 
+I can find the street address of every bank, but not its URL. 
+   https://www5.fdic.gov/idasp/advSearch_warp_download_all.asp?intTab=1
+ 
+There are about 5K hosts in .gov, we can tag the current list USGov,
+taking the reamainder of .gov as SLGov (state and local).
+ 
