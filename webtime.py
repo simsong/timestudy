@@ -271,7 +271,7 @@ class QueryHostEngine:
 
                 # Make sure that this (host,ipaddr,protocol) combination is in dated
                 self.db.execute("insert ignore into dated (host,ipaddr,isv6,https,qdate,qfirst) values (%s,%s,%s,%s,%s,%s)", (qhost,ipaddr,isv6,https,qdate,qtime))
-                dated_id = self.db.select1("select id from dated where host=%s and ipaddr='' and qdate=%s", (qhost,qdate))[0]
+                dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s", (qhost,ipaddr,https,qdate))[0]
 
                 for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
                     self.queryhost_params(qhost,cname,ipaddr,protocol,dated_id,record_all)
