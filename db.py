@@ -4,7 +4,7 @@
 # db.py:
 # Code for working with the MySQL database
 
-import os,sys,subprocess
+import os,sys,subprocess,time
 if sys.version < '3':
     raise RuntimeError("Requires Python 3")
 
@@ -131,7 +131,6 @@ class mysql:
             raise e
 
     def execute(self,cmd,args=None):
-        import time
         """Execute an SQL command and return the cursor, which can be used as an iterator.
         Connect to the database if necessary."""
         self.execute_count += 1
@@ -151,7 +150,7 @@ class mysql:
     
     def select1(self,cmd,args=None):
         """execute an SQL command and return the first row"""
-        cursor = self.execute(cmd,args)
+        cursor = self.execute(cmd,args) # debug handled by execute()
         return cursor.fetchone()
 
     def mysql_version(self):
