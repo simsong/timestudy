@@ -14,8 +14,7 @@ DEFAULT_MYSQL_DB   = 'timedb'
 DEFAULT_MYSQL_PORT = 3306
 DEFAULT_MAX_EXECUTES = 0     # reconnect after 
 
-SCHEMA = ['schema_v1.sql',
-           'schema_v1_v2.sql']
+SCHEMA = 'schema.sql'
 
 # Common DB and Config Routines
 # Find a MySQL driver..
@@ -96,18 +95,7 @@ class mysql:
         for stmt in schema.split(";"):
             stmt = stmt.strip()
             if stmt:
-                print("send ",stmt)
                 c.execute(stmt)
-
-    def upgrade_schema(self):
-        """Upgrade schema if necessary"""
-        self.connect()
-
-        # If metadata table is not present, upgrade from SCHEMA[0] to SCHEMA[1]
-        if not self.table_exists("metadata"):
-            self.send_schema( file_contents(SCHEMA[1]) )
-            self.execute("insert into metadata values ('schema','1');")
-            self.commit()
 
     def connect(self):
         self.mysql = get_mysql_driver()

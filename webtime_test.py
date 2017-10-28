@@ -68,9 +68,13 @@ def test_WebTime():
 
 
 def test_WebTimeExp():
-    w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP,config=db.get_mysql_config("config.ini"))
+    w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP,protocol='http',config=db.get_mysql_config("config.ini"))
     assert w.offset() < datetime.timedelta(seconds=GOOD_TIME_CORRECT)       # we should be off by less than 5 seconds
 
+def test_WebTimeExp_redirect():
+    w = WebTimeExp(domain='nist.gov',protocol='https',ipaddr='50.17.216.216',config=db.get_mysql_config("config.ini"))
+    assert w.rcode in [301,303]
+    assert w.redirect=='https://www.nist.gov/'
 
 def test_get_ip_addrs():
     addrs = get_ip_addrs("google-public-dns-a.google.com")
@@ -80,8 +84,7 @@ def test_QueryHostEngine():
     import time,datetime
     config = db.get_mysql_config("config.ini")
     mdb    = db.mysql(config)
-    mdb.upgrade_schema()
-    qhe       = QueryHostEngine(config)
+    qhe    = QueryHostEngine(config)
     assert(type(qhe.db) == type(mdb))
     assert(qhe.debug == False)
 
@@ -90,16 +93,16 @@ def test_QueryHostEngine():
     qhe.debug = 1
     qhe.db.debug = 1
 
-
-    # Run a query!
-    qhost = GOOD_TIME
-    qhe.queryhost(qhost)
-
     # Make sure that host is in the database now
     # We do this by making sure that there is an entry in the database for 'today'
     # Because 'today' may change between the start and the end, we measure it twice,
     # and we only do the assert if the day hasn't changed
     day0 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
+
+    # Run a query!
+    qhost = GOOD_TIME
+    qhe.queryhost(qhost)
+
     (id,ipaddr,qdate) = mdb.select1("select id,ipaddr,qdate from dated where host=%s order by id desc limit 1",(GOOD_TIME,))
     day1 = datetime.datetime.fromtimestamp(time.time(),pytz.utc).date()
     assert id > 0                 # make sure id is good
@@ -112,6 +115,21 @@ def test_QueryHostEngine():
 
     (id,ipaddr,http) = mdb.select1("select id,ipaddr,https from dated where host=%s and https=1 order by id desc limit 1",(GOOD_TIME,))
     assert id > 0
+
+def test_QueryHostEngine_Redirect():
+    import time,datetime
+    config = db.get_mysql_config("config.ini")
+    mdb    = db.mysql(config)
+    qhe    = QueryHostEngine(config)
+
+    # Enable debugging. It will print to stdout but only generate output if the test fails
+    mdb.debug = 1
+    qhe.debug = 1
+    qhe.db.debug = 1
+
+    # Time.gov always has its time recorded. So we will query time.gov and see if we get the redirect
+    qhe.queryhost('time.gov')
+
 
 SOME_HOSTS=['host{}'.format(i) for i in range(1,100)] # a lot of hosts
 def some_hosts():

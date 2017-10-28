@@ -41,7 +41,7 @@ def s_to_hms(secs):
     if secs < 0:
         sign = "-"
         secs = -secs
-    (days,secs) = factor(secs, 24*60*60)
+    (days,secs)  = factor(secs, 24*60*60)
     (hours,secs) = factor(secs, 60*60)
     (mins, secs) = factor(secs, 60)
 
@@ -55,13 +55,49 @@ def s_to_hms(secs):
 def should_record_hostname(host):
     return host.lower() in ALWAYS_RECORD_DOMAINS
 
+def get_ip_addrs(hostname):
+    """Get all of the IP addresses for a hostname"""
+    return set([i[4][0] for i in socket.getaddrinfo(hostname, 0)])
+
+def get_cname(hostname):
+    """Return the CNAME for hostname, if it exists"""
+    import dns.resolver
+    try:
+        for rdata in dns.resolver.query(hostname,'CNAME'):
+            return str(rdata.target)
+    except Exception as e:
+        return None
+
+def get_hosts(config):
+    """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """
+    (source_file,source_function) = config['hosts']['source'].split('.')
+    source_function = source_function.replace("()","") # remove () if it was provided
+    module = __import__(source_file)
+    try:
+        func = getattr(module,source_function)
+    except AttributeError:
+        raise RuntimeError("module '{}' does not have a function '{}'".format(source_file,source_function))
+    order = config['hosts']['order']
+    if order =='random':
+        import random
+        import copy
+        ret = copy.copy(func())
+        random.shuffle(ret)
+        return ret
+    elif order=='as_is':
+        return func()
+    else:
+        raise RuntimeError("hosts:order '{}' must be random or as_is".format(order))
+
+
+
 class WebTime():
     """Webtime class. Represents a query to a remote web server and the response.
     @param qdatetime - a datetime object when the query was made
     @param rdatetime - the datetime returned by the remote system.
     """
     def __init__(self,qhost=None,qipaddr=None,qdatetime=None,
-                 qduration=None,rdatetime=None,rcode=None,mintime=MIN_TIME):
+                 qduration=None,rdatetime=None,rcode=None,mintime=MIN_TIME,redirect=None):
         def fixtime(dt):
             try:
                 return dt.astimezone(pytz.utc)
@@ -72,8 +108,9 @@ class WebTime():
         self.qdatetime  = fixtime(qdatetime)
         self.qduration  = qduration
         self.rdatetime  = fixtime(rdatetime)
-        self.rcode      = rcode
+        self.rcode      = rcode # response code
         self.mintime    = mintime
+        self.redirect   = redirect
 
     def __repr__(self):
         return "<WebTime qhost:{} qipaddr:{} qdatetime:{} offset_seconds:{}>".format(self.qhost,self.qipaddr,self.qdatetime,self.offset_seconds())
@@ -111,11 +148,18 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return self.wrong_time() or should_record_hostname(self.qhost)
 
-def WebTimeExp(*,domain=None,ipaddr=None,protocol='http',config=None):
+def WebTimeExp(*,domain=None,ipaddr=None,protocol=None,config=None):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
     """Find the webtime of a particular domain and IP address"""
+
+    assert (domain!=None)
+    assert (ipaddr!=None)
+    assert (config!=None)
+    assert (protocol!=None)
+
     import requests,socket,email,sys
     url = "{}://{}/".format(protocol,domain)
+    print("url:",url,'protocol',protocol)
     for i in range(config.getint('webtime','retry')):
         s = requests.Session()
         try:
@@ -146,26 +190,17 @@ def WebTimeExp(*,domain=None,ipaddr=None,protocol='http',config=None):
             continue
         qduration = t1-t0
         qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
-        return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,qduration=qduration,
-                       rdatetime=date,rcode=r.status_code)
+        redirect = r.headers.get('Location',None)
+        print("redirect:",redirect)
+        return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,
+                       qduration=qduration,
+                       rdatetime=date,
+                       rcode=r.status_code,redirect = redirect)
     # Too many retries
     if self.debug: print("ERROR too many retries")
     return None
         
         
-def get_ip_addrs(hostname):
-    """Get all of the IP addresses for a hostname"""
-    return set([i[4][0] for i in socket.getaddrinfo(hostname, 0)])
-
-def get_cname(hostname):
-    """Return the CNAME for hostname, if it exists"""
-    import dns.resolver
-    try:
-        for rdata in dns.resolver.query(hostname,'CNAME'):
-            return str(rdata.target)
-    except Exception as e:
-        return None
-
 class QueryHostEngine:
     """This class implements is the web experiment engine. A collection of objects are meant to be called in a multiprocessing pool.
     Each object creates a connection to the SQL database. The queryhost(qhost) entry point performs a lookup for all IP addresses
@@ -188,6 +223,8 @@ class QueryHostEngine:
             self.db.debug  = debug
 
     def queryhost_params(self,qhost,cname,ipaddr,protocol,dated_id,record_all):
+        """Perform a query of qhost; return the WebTime object if the experiment was successful."""
+
         isv6 = 1 if ":" in ipaddr else 0
         https = 1 if protocol=='https' else 0
 
@@ -198,7 +235,7 @@ class QueryHostEngine:
         # self.db.execute("SELECT * FROM dated WHERE id=%s LOCK IN SHARE MODE",(dated_id,))
         # and self.db doesn't do that yet.
         cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
-        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
+        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,protocol=protocol,config=self.config)
         if wt:
             qlast = wt.qtime()
             if wt.wrong_time():
@@ -213,12 +250,13 @@ class QueryHostEngine:
         self.db.execute(cmd, (qlast,dated_id))
 
         if wt and (wt.should_record() or record_all):
-            self.db.execute("INSERT IGNORE INTO times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset) "+
-                       "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s))",
+            self.db.execute("INSERT IGNORE INTO times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
                        (wt.qhost,cname,wt.qipaddr,isv6,https,wt.qdatetime_iso(),
                         wt.qduration,wt.rdatetime_iso(),
-                        wt.qdatetime_iso(),wt.rdatetime_iso()))
+                        wt.qdatetime_iso(),wt.rdatetime_iso(),wt.rcode,wt.redirect))
         self.db.commit()
+        return wt
         
     def queryhost(self,qhost):
         """
@@ -235,83 +273,78 @@ class QueryHostEngine:
         # Make sure we are connected to the database
         assert self.db.mysql_version() > '5'
 
-        # Record the times when we start querying the host
-        qdatetime = datetime.datetime.fromtimestamp(time.time(),pytz.utc)
-        qtime = qdatetime.time().isoformat()
-        qdate = qdatetime.date().isoformat()
+        # Now we create two sets, one that we've queried, one that we need to query.
+        # Each time we query a host, remove it from to_query and add it to queried.
+        # Add a host to to_query() if we get a redirect.
+        # We might get multiple redirects on each query, so we will keep a set.
 
-        # Make sure that this host is in the hosts table
-        self.db.execute("INSERT IGNORE INTO hosts (host,qdatetime) VALUES (%s,now())", (qhost,))
+        to_query = set([qhost]) # the hosts that we need to query
+        queried  = set()        # the hosts that we did query
 
-        # Try to get the IPaddresses for the host
-        cname = get_cname(qhost)
-        try:
-            # Get the ipaddresses for this host. DNS errors are recorded in dated as errors with ipaddr=error-code and https=NULL
-            ipaddrs = get_ip_addrs(qhost)
-            if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
-        except socket.gaierror as e:
-            self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'aierror',qdate,qtime))
-            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,'aierror',qdate))
-            self.db.commit()
-            if self.debug: print("ERROR socket.aierror {} {}".format(qhost,str(e)))
-            return
-        except socket.herror as e:
-            self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'herror',qdate,qtime))
-            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,herror,qdate))
-            self.db.commit()
-            if self.debug: print("ERROR socket.herror {} {}".format(qhost,str(e)))
-            return
+        while to_query:
+            qhost = to_query.pop() # get another host to query
+            if qhost in queried:   
+                continue        # we've already queried this host
+            queried.add(qhost)  # add this host to the list of hosts that we have queried
 
-        # Are we supposed to record all of the responses for this host?
-        try:
-            record_all = self.db.select1("SELECT recordall FROM hosts WHERE host=%s",(qhost,))[0]
-        except TypeError:
-            record_all = 0
+            # Record the times when we start querying the host
+            qdatetime = datetime.datetime.fromtimestamp(time.time(),pytz.utc)
+            qtime = qdatetime.time().isoformat()
+            qdate = qdatetime.date().isoformat()
 
-        # Check each IP address for this host. Yield a wt object for each that is found
-        for ipaddr in set(ipaddrs): # do each one once
-            #
-            # Query the IP address
-            #
-            for protocol in self.config.get('hosts','protocol').split(','):
-                isv6 = 1 if ":" in ipaddr else 0
-                https = 1 if protocol=='https' else 0
+            # Make sure that this host is in the hosts table
+            self.db.execute("INSERT IGNORE INTO hosts (host,qdatetime) VALUES (%s,now())", (qhost,))
 
-                # Make sure that this (host,ipaddr,protocol) combination is in dated
-                cursor = self.db.execute("INSERT IGNORE INTO dated (host,ipaddr,isv6,https,qdate,qfirst) VALUES (%s,%s,%s,%s,%s,%s)",
-                                         (qhost,ipaddr,isv6,https,qdate,qtime))
-                if cursor.rowcount==1:
-                    dated_id = cursor.lastrowid
-                else:
-                    # Get the id (we might be able to just read it)
-                    dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s",
-                                               (qhost,ipaddr,https,qdate))[0]
-                # And lock it for update
-                for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
-                    self.queryhost_params(qhost,cname,ipaddr,protocol,dated_id,record_all)
+            # Try to get the IPaddresses for the host
+            cname = get_cname(qhost)
+            try:
+                # Get the ipaddresses for this host. DNS errors are recorded in dated as errors with ipaddr=error-code and https=NULL
+                ipaddrs = get_ip_addrs(qhost)
+                if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
+            except socket.gaierror as e:
+                self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'aierror',qdate,qtime))
+                self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,'aierror',qdate))
+                self.db.commit()
+                if self.debug: print("ERROR socket.aierror {} {}".format(qhost,str(e)))
+                return
+            except socket.herror as e:
+                self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'herror',qdate,qtime))
+                self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,herror,qdate))
+                self.db.commit()
+                if self.debug: print("ERROR socket.herror {} {}".format(qhost,str(e)))
+                return
+
+            # Are we supposed to record all of the responses for this host?
+            try:
+                record_all = self.db.select1("SELECT recordall FROM hosts WHERE host=%s",(qhost,))[0]
+            except TypeError:
+                record_all = 0
+
+            # Check each IP address for this host. Yield a wt object for each that is found
+            for ipaddr in set(ipaddrs): # do each one once
+                #
+                # Query the IP address
+                #
+                for protocol in self.config.get('hosts','protocol').split(','):
+                    isv6  = 1 if ":" in ipaddr else 0
+                    https = 1 if protocol=='https' else 0
+
+                    # Make sure that this (host,ipaddr,protocol) combination is in dated
+                    cursor = self.db.execute("INSERT IGNORE INTO dated (host,ipaddr,isv6,https,qdate,qfirst) VALUES (%s,%s,%s,%s,%s,%s)",
+                                             (qhost,ipaddr,isv6,https,qdate,qtime))
+                    if cursor.rowcount==1:
+                        dated_id = cursor.lastrowid
+                    else:
+                        # Get the id (we might be able to just read it)
+                        dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s",
+                                                   (qhost,ipaddr,https,qdate))[0]
+                    # And lock it for update
+                    for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
+                        wt = self.queryhost_params(qhost,cname,ipaddr,protocol,dated_id,record_all)
+                        if wt and wt.redirect:
+                            to_query.add(wt.redirect) # another to query
 
                 
-
-def get_hosts(config):
-    """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """
-    (source_file,source_function) = config['hosts']['source'].split('.')
-    source_function = source_function.replace("()","") # remove () if it was provided
-    module = __import__(source_file)
-    try:
-        func = getattr(module,source_function)
-    except AttributeError:
-        raise RuntimeError("module '{}' does not have a function '{}'".format(source_file,source_function))
-    order = config['hosts']['order']
-    if order =='random':
-        import random
-        import copy
-        ret = copy.copy(func())
-        random.shuffle(ret)
-        return ret
-    elif order=='as_is':
-        return func()
-    else:
-        raise RuntimeError("hosts:order '{}' must be random or as_is".format(order))
 
 if __name__=="__main__":
     import argparse
@@ -339,8 +372,6 @@ if __name__=="__main__":
     ver = dbc.mysql_version()
     if args.debug:
         print("MySQL Version {}".format(ver))
-    # Upgrade the schema if necessary
-    dbc.upgrade_schema()
 
     # Get the hosts
     hosts = get_hosts(config)

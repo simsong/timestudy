@@ -27,21 +27,12 @@ def test_create_schema():
     mdb.execute("DROP TABLE IF EXISTS `log`")
 
     # 
-    # Send each schema
+    # Send the schema
     #
-    mdb.send_schema(db.file_contents(SCHEMA[0]))
+    mdb.send_schema(db.file_contents(SCHEMA))
 
     assert mdb.table_exists('dated')==True
     assert mdb.table_exists('xxx')==False
-
-    # Upgrade the schema
-    mdb.upgrade_schema()
-    
-    # 
-    # Show that the second schema is present
-    assert mdb.table_exists('metadata')==True
-    assert mdb.select1("select value from metadata where name='schema';")[0]=='1'
-
 
 def test_get_mysql_driver():
     assert db.get_mysql_driver() != None
