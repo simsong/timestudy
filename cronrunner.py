@@ -55,7 +55,7 @@ if __name__=="__main__":
     logger_info('{} PID {} Started'.format(__file__,os.getpid()))
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--debug",action="store_true",help="actually run subprocess")
+    parser.add_argument("--debug",action="store_true")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
 
     args   = parser.parse_args()

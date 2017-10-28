@@ -184,6 +184,8 @@ class QueryHostEngine:
         self.config    = config
         self.db        = db.mysql( config)
         self.debug     = debug
+        if debug:
+            self.db.debug  = debug
 
     def queryhost_params(self,qhost,cname,ipaddr,protocol,dated_id,record_all):
         isv6 = 1 if ":" in ipaddr else 0
@@ -192,21 +194,27 @@ class QueryHostEngine:
         # Update the query count for the hostname
         self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
 
+        # I might want to lock, but then it all needs to be done with the same cursor.
+        # self.db.execute("SELECT * FROM dated WHERE id=%s LOCK IN SHARE MODE",(dated_id,))
+        # and self.db doesn't do that yet.
         cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
         wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,config=self.config)
-        if wt and wt.wrong_time():
-            # We got a response and it's the wrong time
-            cmd += ",wtcount=wtcount+1"
+        if wt:
+            qlast = wt.qtime()
+            if wt.wrong_time():
+                # We got a response and it's the wrong time
+                cmd += ",wtcount=wtcount+1"
         if not wt:
             # Got an error. Increment the error count
             cmd += ",ecount=ecount+1 "
+            qlast = datetime.datetime.now().time()
 
-        cmd += " where id=%s"
-        self.db.execute(cmd, (wt.qtime(),dated_id))
+        cmd += " WHERE id=%s"
+        self.db.execute(cmd, (qlast,dated_id))
 
-        if wt.should_record() or record_all:
-            self.db.execute("insert ignore into times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset) "+
-                       "values (%s,%s,%s,%s,%s,%s,%s,%s,timestampdiff(second,%s,%s))",
+        if wt and (wt.should_record() or record_all):
+            self.db.execute("INSERT IGNORE INTO times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset) "+
+                       "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s))",
                        (wt.qhost,cname,wt.qipaddr,isv6,https,wt.qdatetime_iso(),
                         wt.qduration,wt.rdatetime_iso(),
                         wt.qdatetime_iso(),wt.rdatetime_iso()))
@@ -233,30 +241,30 @@ class QueryHostEngine:
         qdate = qdatetime.date().isoformat()
 
         # Make sure that this host is in the hosts table
-        print("self.db.execute...",self.db)
-        print("self.db.debug=",self.db.debug)
-        self.db.execute("insert ignore into hosts (host,qdatetime) values (%s,now())", (qhost,))
-        print("added to hosts")
+        self.db.execute("INSERT IGNORE INTO hosts (host,qdatetime) VALUES (%s,now())", (qhost,))
 
         # Try to get the IPaddresses for the host
         cname = get_cname(qhost)
         try:
+            # Get the ipaddresses for this host. DNS errors are recorded in dated as errors with ipaddr=error-code and https=NULL
             ipaddrs = get_ip_addrs(qhost)
             if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
-        except socket.gaierror:
-            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,dated_id))
+        except socket.gaierror as e:
+            self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'aierror',qdate,qtime))
+            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,'aierror',qdate))
             self.db.commit()
-            if self.debug: print("ERROR socket.aierror {} ".format(qhost))
+            if self.debug: print("ERROR socket.aierror {} {}".format(qhost,str(e)))
             return
-        except socket.herror:
-            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where id=%s",(qtime,dated_id))
+        except socket.herror as e:
+            self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'herror',qdate,qtime))
+            self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,herror,qdate))
             self.db.commit()
-            if self.debug: print("ERROR socket.herror {}".format(qhost))
+            if self.debug: print("ERROR socket.herror {} {}".format(qhost,str(e)))
             return
 
         # Are we supposed to record all of the responses for this host?
         try:
-            record_all = self.db.select1("select recordall from hosts where host=%s",(qhost,))[0]
+            record_all = self.db.select1("SELECT recordall FROM hosts WHERE host=%s",(qhost,))[0]
         except TypeError:
             record_all = 0
 
@@ -270,11 +278,19 @@ class QueryHostEngine:
                 https = 1 if protocol=='https' else 0
 
                 # Make sure that this (host,ipaddr,protocol) combination is in dated
-                self.db.execute("insert ignore into dated (host,ipaddr,isv6,https,qdate,qfirst) values (%s,%s,%s,%s,%s,%s)", (qhost,ipaddr,isv6,https,qdate,qtime))
-                dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s", (qhost,ipaddr,https,qdate))[0]
-
+                cursor = self.db.execute("INSERT IGNORE INTO dated (host,ipaddr,isv6,https,qdate,qfirst) VALUES (%s,%s,%s,%s,%s,%s)",
+                                         (qhost,ipaddr,isv6,https,qdate,qtime))
+                if cursor.rowcount==1:
+                    dated_id = cursor.lastrowid
+                else:
+                    # Get the id (we might be able to just read it)
+                    dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s",
+                                               (qhost,ipaddr,https,qdate))[0]
+                # And lock it for update
                 for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
                     self.queryhost_params(qhost,cname,ipaddr,protocol,dated_id,record_all)
+
+                
 
 def get_hosts(config):
     """Return the list of hosts specified by the 'sources' option in the [hosts] section of the config file. """
@@ -331,7 +347,7 @@ if __name__=="__main__":
 
     # Create a QueryHostEngine. It will not connect to the SQL Database until the connection is needed.
     # If we run in a multiprocessing pool, each process will get its own connection
-    qhe = QueryHostEngine( config )
+    qhe = QueryHostEngine( config, debug=args.debug )
     
     # Start parallel execution
     time_start = time.time()
