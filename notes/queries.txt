@@ -1,0 +1,5 @@
+Interesting queries:
+
+hosts with redirect to somewhere else:
+
+select distinct host,https,redirect from times where redirect>'' and concat(host,"/")!=substr(redirect,9);

@@ -6,6 +6,9 @@ GOOD_TIME = 'time.glb.nist.gov' # for a good time, call...
 GOOD_TIME_IP = '132.163.4.22'
 GOOD_TIME_CORRECT = 5           # our clock should be within this many seconds of the GOOD TIME
 
+KNOWN_REDIR_SOURCE = 'lis.gov'  # We know that lis.gov redirects to www.list.gov
+KNOWN_REDIR_DEST   = 'www.lis.gov'   # Known not to be in the source files
+
 def test_s_to_hms():
     assert s_to_hms(0)==" 00:00:00"
     assert s_to_hms(10)==" 00:00:10"
@@ -13,10 +16,17 @@ def test_s_to_hms():
     assert s_to_hms(3600)==" 01:00:00"
     assert s_to_hms(3615)==" 01:00:15"
     
-
 def test_get_cname():
     assert get_cname("nosuchhost")==None
     assert get_cname("www.media.mit.edu")=="www-prod.media.mit.edu."
+
+def test_is_v6():
+    assert is_v6("2610:20:6005:13::35")==1
+    assert is_v6("128.0.128.0")==0
+
+def test_is_https():
+    assert is_https("http")==0
+    assert is_https("https")==1
 
 def test_acast():
     # [centos@timedb ~]$ host acast.grc.nasa.gov
@@ -27,6 +37,9 @@ def test_acast():
     # web.grc.nasa.gov mail is handled by 100 mx1.grc.nasa.gov.
     # [centos@timedb ~]$
     host = 'acast.grc.nasa.gov';
+    addrs = get_ip_addrs(host)
+    # Make sure we have both an IPv6 and an IPv4 address
+    assert 0 < len([a for a in addrs if is_v6(a)]) < len(addrs)
 
 def test_should_record_hostname():
     assert should_record_hostname("nosuchhost")==False
@@ -73,8 +86,8 @@ def test_WebTimeExp():
 
 def test_WebTimeExp_redirect():
     w = WebTimeExp(domain='nist.gov',protocol='https',ipaddr='50.17.216.216',config=db.get_mysql_config("config.ini"))
-    assert w.rcode in [301,303]
-    assert w.redirect=='https://www.nist.gov/'
+    assert w.rcode in [301,302,303]
+    assert w.redirect=='www.nist.gov'
 
 def test_get_ip_addrs():
     addrs = get_ip_addrs("google-public-dns-a.google.com")
@@ -127,8 +140,10 @@ def test_QueryHostEngine_Redirect():
     qhe.debug = 1
     qhe.db.debug = 1
 
-    # Time.gov always has its time recorded. So we will query time.gov and see if we get the redirect
-    qhe.queryhost('time.gov')
+    qhe.queryhost(KNOWN_REDIR_SOURCE,force_record=True)
+    # Now make sure that there was a query done on KNOWN_REDIR_DEST within the past 5 seconds
+    (id,diff)  = mdb.select1("select id,NOW()-qdatetime from times where host=%s order by qdatetime desc limit 1",(KNOWN_REDIR_DEST,))
+    assert diff<5
 
 
 SOME_HOSTS=['host{}'.format(i) for i in range(1,100)] # a lot of hosts

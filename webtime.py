@@ -51,7 +51,6 @@ def s_to_hms(secs):
     ret += "{:02.0f}:{:02.0f}:{:02.0f}".format(hours,mins,secs)
     return ret
 
-
 def should_record_hostname(host):
     return host.lower() in ALWAYS_RECORD_DOMAINS
 
@@ -89,7 +88,13 @@ def get_hosts(config):
     else:
         raise RuntimeError("hosts:order '{}' must be random or as_is".format(order))
 
+def is_v6(ipaddr):
+    """Returns 1 if addr is an ipv6 address, otherwise 0. We return 1/0 rather than True/False because it's used in an SQL query"""
+    return 1 if ":" in ipaddr else 0
 
+def is_https(protocol):
+    """Returns 1 if protocol is https, otherwise 0. We return 1/0 rather than True/False because it's used in an SQL query"""
+    return 1 if protocol=='https' else 0
 
 class WebTime():
     """Webtime class. Represents a query to a remote web server and the response.
@@ -159,7 +164,6 @@ def WebTimeExp(*,domain=None,ipaddr=None,protocol=None,config=None):
 
     import requests,socket,email,sys
     url = "{}://{}/".format(protocol,domain)
-    print("url:",url,'protocol',protocol)
     for i in range(config.getint('webtime','retry')):
         s = requests.Session()
         try:
@@ -190,14 +194,18 @@ def WebTimeExp(*,domain=None,ipaddr=None,protocol=None,config=None):
             continue
         qduration = t1-t0
         qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
-        redirect = r.headers.get('Location',None)
-        print("redirect:",redirect)
+        try:
+            from urllib.parse import urlparse
+            redirect = urlparse(r.headers.get('Location')).hostname
+        except Exception:
+            redirect = None
         return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,
                        qduration=qduration,
                        rdatetime=date,
                        rcode=r.status_code,redirect = redirect)
     # Too many retries
-    if self.debug: print("ERROR too many retries")
+    if self.debug:
+        print("ERROR too many retries")
     return None
         
         
@@ -208,7 +216,7 @@ class QueryHostEngine:
     Key methods:
     .__init__(db,debug)         - Initializes. db is the parameters for the database connection, but it doesn't connect until needed.
     .webtime(qhost,cursor=None) - get the webtime for every IP address for qhost; cursor is the MySQL cursor.
-    .queryhost(qhost)           - main entry point. Run the experiment on host qhost, all IP addresses
+    .queryhost(qhost,force_record=False) - main entry point. Run the experiment on host qhost, all IP addresses; if force, make sure we record
     """
     def __init__(self,config,debug=False):
         """Create the object.
@@ -222,11 +230,8 @@ class QueryHostEngine:
         if debug:
             self.db.debug  = debug
 
-    def queryhost_params(self,qhost,cname,ipaddr,protocol,dated_id,record_all):
+    def queryhost_params(self,*,qhost,cname,ipaddr,protocol,dated_id,record_all):
         """Perform a query of qhost; return the WebTime object if the experiment was successful."""
-
-        isv6 = 1 if ":" in ipaddr else 0
-        https = 1 if protocol=='https' else 0
 
         # Update the query count for the hostname
         self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
@@ -252,21 +257,22 @@ class QueryHostEngine:
         if wt and (wt.should_record() or record_all):
             self.db.execute("INSERT IGNORE INTO times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
                             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
-                       (wt.qhost,cname,wt.qipaddr,isv6,https,wt.qdatetime_iso(),
+                       (wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),is_https(protocol),wt.qdatetime_iso(),
                         wt.qduration,wt.rdatetime_iso(),
                         wt.qdatetime_iso(),wt.rdatetime_iso(),wt.rcode,wt.redirect))
         self.db.commit()
         return wt
         
-    def queryhost(self,qhost):
+    def queryhost(self,qhost,force_record=False):
         """
         Given the domain, get the IP addresses and query each one. 
         Updates the dated table.
         If time should be recorded, update the times table.
-        Return a WebTime object for each IP address.
+        Return a list of WebTime objects for all successful queries.
         NOTE ON SQL: only the dated table is updated, so that is the only one that needs to be locked.
         """
 
+        ret = []
         if self.debug:
             print("DEBUG PID{} webtime({})".format(os.getpid(),qhost))
 
@@ -306,13 +312,13 @@ class QueryHostEngine:
                 self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,'aierror',qdate))
                 self.db.commit()
                 if self.debug: print("ERROR socket.aierror {} {}".format(qhost,str(e)))
-                return
+                continue
             except socket.herror as e:
                 self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'herror',qdate,qtime))
                 self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,herror,qdate))
                 self.db.commit()
                 if self.debug: print("ERROR socket.herror {} {}".format(qhost,str(e)))
-                return
+                continue
 
             # Are we supposed to record all of the responses for this host?
             try:
@@ -320,29 +326,33 @@ class QueryHostEngine:
             except TypeError:
                 record_all = 0
 
+            if force_record:
+                record_all = True
+
             # Check each IP address for this host. Yield a wt object for each that is found
             for ipaddr in set(ipaddrs): # do each one once
                 #
                 # Query the IP address
                 #
                 for protocol in self.config.get('hosts','protocol').split(','):
-                    isv6  = 1 if ":" in ipaddr else 0
-                    https = 1 if protocol=='https' else 0
 
                     # Make sure that this (host,ipaddr,protocol) combination is in dated
                     cursor = self.db.execute("INSERT IGNORE INTO dated (host,ipaddr,isv6,https,qdate,qfirst) VALUES (%s,%s,%s,%s,%s,%s)",
-                                             (qhost,ipaddr,isv6,https,qdate,qtime))
+                                             (qhost,ipaddr,is_v6(ipaddr),is_https(protocol),qdate,qtime))
                     if cursor.rowcount==1:
                         dated_id = cursor.lastrowid
                     else:
                         # Get the id (we might be able to just read it)
                         dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s",
-                                                   (qhost,ipaddr,https,qdate))[0]
+                                                   (qhost,ipaddr,is_https(protocol),qdate))[0]
                     # And lock it for update
                     for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
-                        wt = self.queryhost_params(qhost,cname,ipaddr,protocol,dated_id,record_all)
+                        wt = self.queryhost_params(qhost=qhost,cname=cname,ipaddr=ipaddr,protocol=protocol,
+                                                   dated_id=dated_id,record_all=record_all)
                         if wt and wt.redirect:
                             to_query.add(wt.redirect) # another to query
+                        ret.append(wt)
+        return wt
 
                 
 
@@ -395,7 +405,7 @@ if __name__=="__main__":
     if args.threads:
         threads = args.threads
     if threads==1:
-        [qhe.queryhost(u) for u in hosts]
+        [qhe.queryhost(qhost) for u in hosts]
     else:
         from multiprocessing import Pool
         pool = Pool(threads)
