@@ -184,9 +184,10 @@ We are not examining multiple machines behind the same IP address.
 Query Infrastructure:
 
 1. We think that we should make multiple queries.
-   - http and https
-   - several in a row (at least 2)
-   - Do we throw out the first, or keep it?  If we are chaging both port & time, Simson argued we should do 4 queries. But if we throw away first 2 (path set-up), then we should do 6 and possibly throw away the first 2 (http & https, assuming we are querying both http and https at the same time, rather than treating them as entirely different hosts.)
+   - http and https // DONE
+   - several in a row (at least 2) // DONE
+   - Do we throw out the first, or keep it?  If we are chaging both port & time, Simson argued we should do 4 queries. But if we throw away first 2 (path set-up), then we should do 6 and possibly throw away the first 2 (http & https, assuming we are querying both http and https at the same time, rather than treating them as entirely different hosts.) // WE KEEP ALL; WE CAN SUPPRESS LATER. 
+   - Add repeat count to the database and run# to database
 
 We havne't figured why the slope of a broken line would change. 
 
@@ -206,7 +207,6 @@ Database issues:
    If we don't learn enough from the dated/qdate plot, we can capture all of the zeros
    in another table that has dated/id by rtime (right time), where rtime is a text
    string of number of seconds past midnight for each correct read.
-
 
 +++
 command sequence 1:
@@ -313,13 +313,14 @@ http://portal.hud.gov/  Fri Sep 1 14:19:27 EDT 2017Date: Fri, 01 Sep 2017 18:19:
 Proposed way forward (roughly in order)
 
 Simson:
- - Set up mirror on dreamhost
+ - Set up mirror on dreamhost // DONE. timedb.simson.net
  - Create infrastructure for test & production environments. 
    - Document in README.md so that Alex can follow. 
+   - DONE// you just need a second check-out.
  - Revise database schema to allow for multiple cohorts of hosts.
- - Revise scanner to be run every minute out of cron; add locks.
- - Add cname and geolocation info to query process.
- - Implmenet randomization algorithm; allow selection of choice algorithm to be specified in config file.
+ - Revise scanner to be run every minute out of cron; add locks. // DONE, but we are using every 5 minutes
+ - Add cname and geolocation info to query process. // ADDED CNAME, need to do GEOLOCATION
+ - Implmenet randomization algorithm; allow selection of choice algorithm to be specified in config file. // DONE
 
 Alex:
 (Simson recommends making changes in this order for simplicity.)
