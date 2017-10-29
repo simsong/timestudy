@@ -83,20 +83,6 @@ class mysql:
         self.mysql_max_executes = DEFAULT_MAX_EXECUTES
         self.debug         = config.getint('mysql','debug')
 
-    def table_exists(self,tablename):
-        """Return true if tablename is a real table"""
-        cursor = self.conn.cursor()
-        cursor.execute("show tables like %s",(tablename,))
-        res = cursor.fetchall()
-        return True if res else False
-
-    def send_schema(self,schema):
-        c = self.conn.cursor()
-        for stmt in schema.split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                c.execute(stmt)
-
     def connect(self):
         self.mysql = get_mysql_driver()
         try:
@@ -117,6 +103,23 @@ class mysql:
                 self.config.get('mysql','port'),
                 self.config.get('mysql','db')))
             raise e
+
+    def table_exists(self,tablename):
+        """Return true if tablename is a real table"""
+        cursor = self.conn.cursor()
+        cursor.execute("show tables like %s",(tablename,))
+        res = cursor.fetchall()
+        return True if res else False
+
+    def send_schema(self,schema):
+        c = self.conn.cursor()
+        for stmt in schema.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                c.execute(stmt)
+
+    def mysql_version(self):
+        return self.select1("select version();")[0]
 
     def execute(self,cmd,args=None):
         """Execute an SQL command and return the cursor, which can be used as an iterator.
@@ -150,12 +153,15 @@ class mysql:
         cursor = self.execute(cmd,args) # debug handled by execute()
         return cursor.fetchone()
 
-    def mysql_version(self):
-        return self.select1("select version();")[0]
-
     def commit(self):
         if self.debug: print("db.COMMIT PID:{}".format(os.getpid()))
         self.conn.commit()
+
+    def log(self,msg):
+        """Save msg in the log table, return the log id"""
+        c = self.execute("INSERT INTO log (value) VALUES (%s)",(msg+" pid={}".format(os.getpid()),))
+        self.conn.commit()
+        return c.lastrowid
 
     def close(self):
         if self.conn:

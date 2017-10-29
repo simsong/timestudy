@@ -230,7 +230,7 @@ class QueryHostEngine:
         if debug:
             self.db.debug  = debug
 
-    def queryhost_params(self,*,qhost,cname,ipaddr,protocol,dated_id,record_all):
+    def queryhost_params(self,*,qhost,cname,ipaddr,seq,protocol,dated_id,record_all):
         """Perform a query of qhost; return the WebTime object if the experiment was successful."""
 
         # Update the query count for the hostname
@@ -255,9 +255,9 @@ class QueryHostEngine:
         self.db.execute(cmd, (qlast,dated_id))
 
         if wt and (wt.should_record() or record_all):
-            self.db.execute("INSERT IGNORE INTO times (host,cname,ipaddr,isv6,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
-                       (wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),is_https(protocol),wt.qdatetime_iso(),
+            self.db.execute("INSERT IGNORE INTO times (host,cname,ipaddr,isv6,seq,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
+                       (wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),seq,is_https(protocol),wt.qdatetime_iso(),
                         wt.qduration,wt.rdatetime_iso(),
                         wt.qdatetime_iso(),wt.rdatetime_iso(),wt.rcode,wt.redirect))
         self.db.commit()
@@ -346,8 +346,8 @@ class QueryHostEngine:
                         dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s",
                                                    (qhost,ipaddr,is_https(protocol),qdate))[0]
                     # And lock it for update
-                    for repeat in range(self.config.getint('webtime','repeat',fallback=1)):
-                        wt = self.queryhost_params(qhost=qhost,cname=cname,ipaddr=ipaddr,protocol=protocol,
+                    for seq in range(self.config.getint('webtime','repeat',fallback=1)):
+                        wt = self.queryhost_params(qhost=qhost,cname=cname,ipaddr=ipaddr,seq=seq,protocol=protocol,
                                                    dated_id=dated_id,record_all=record_all)
                         if wt and wt.redirect:
                             to_query.add(wt.redirect) # another to query
@@ -382,6 +382,8 @@ if __name__=="__main__":
     ver = dbc.mysql_version()
     if args.debug:
         print("MySQL Version {}".format(ver))
+
+    runid = dbc.log("{} running".format(__file__))
 
     # Get the hosts
     hosts = get_hosts(config)
@@ -420,3 +422,4 @@ if __name__=="__main__":
         print("Total hosts: {:,}  Total time: {}  Hosts/sec: {:.2f}  Queries/sec: {:.2f}"\
               .format(host_count,s_to_hms(time_total),host_count/time_total,float(qcount1-qcount0)/time_total))
 
+    dbc.log("run {} finished".format(runid))

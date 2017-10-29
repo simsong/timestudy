@@ -50,6 +50,13 @@ def test_mysql():
     assert ver[0]>='5'
     assert 'DB' in ver
     
+def test_log():
+    mdb    = db.mysql( db.get_mysql_config("config.ini") )
+    mdb.connect()
+    id = mdb.log("This is PID {}".format(os.getpid()))
+    assert id>0
+    
+    
 
 if __name__=="__main__":
     test_create_schema()
