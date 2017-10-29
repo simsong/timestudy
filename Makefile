@@ -12,9 +12,9 @@ top-100m.csv:
 	unzip top-1m.csv.zip
 	/bin/rm -f top-1m.csv.zip
 
-schema.sql:
-	python3 db.py --dumpschema schema.sql
+schema.sql: Makefile webtime.py
+	python3 db.py --dumpschema | sed 's/ AUTO_INCREMENT=[0-9]*//g' > schema.sql
 
 backup:
-	python3 db.py --dumpdb database.sql
+	python3 db.py --dumpdb > database.sql
 

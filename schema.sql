@@ -41,7 +41,7 @@ CREATE TABLE `dated` (
   KEY `ecount` (`ecount`),
   KEY `wtcount` (`wtcount`),
   KEY `qcount` (`qcount`)
-) ENGINE=InnoDB AUTO_INCREMENT=15137694 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -62,7 +62,7 @@ CREATE TABLE `hosts` (
   UNIQUE KEY `host` (`host`),
   KEY `qdatetime` (`qdatetime`),
   KEY `usg` (`usg`)
-) ENGINE=InnoDB AUTO_INCREMENT=1635859 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -121,7 +121,7 @@ CREATE TABLE `times` (
   KEY `qdatetime` (`qdatetime`),
   KEY `ipaddr` (`ipaddr`),
   KEY `host` (`host`,`ipaddr`,`qdatetime`)
-) ENGINE=InnoDB AUTO_INCREMENT=958776 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -133,4 +133,4 @@ CREATE TABLE `times` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2017-10-28 20:45:15
+-- Dump completed on 2017-10-29 14:46:27

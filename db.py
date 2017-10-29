@@ -67,12 +67,12 @@ def get_mysql_config(fname=None):
     return config
 
 
-def mysql_dump(f,config,opts):
+def mysql_dump_stdout(config,opts):
     """Using the config, dump MySQL schema"""
     mc = config["mysql"]
     cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], opts,mc['db']]
     sys.stderr.write(" ".join(cmd)+"\n")
-    subprocess.call(cmd,stdout=f)
+    subprocess.call(cmd)
 
 class mysql:
     """Encapsulate a MySQL connection"""
@@ -194,15 +194,15 @@ if __name__=="__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--config',help='specify config file',default=DEFAULT_CONFIG)
-    parser.add_argument("--dumpschema",help="dump schema to specified file")
-    parser.add_argument("--dumpdb",help="dump db to specified file")
+    parser.add_argument("--dumpschema",action='store_true',help="dump schema to stdout")
+    parser.add_argument("--dumpdb",action='store_true',help="dump schema to stdout")
 
     args = parser.parse_args()
     config = get_mysql_config(args.config)
 
     if args.dumpschema:
-        mysql_dump(open(args.dumpschema,"w"),config,'-d')
+        mysql_dump_stdout(config,'-d')
 
     if args.dumpdb:
-        mysql_dump(open(args.dumpdb,"w"),config,'-q')
+        mysql_dump_stdout(config,'-q')
 
