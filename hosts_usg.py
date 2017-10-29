@@ -2,7 +2,7 @@
 
 # library for dealing with USG hosts
 
-TIMEOUT=10
+TIMEOUT=5
 
 import requests
 import glob

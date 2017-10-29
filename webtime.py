@@ -218,7 +218,7 @@ class QueryHostEngine:
     .webtime(qhost,cursor=None) - get the webtime for every IP address for qhost; cursor is the MySQL cursor.
     .queryhost(qhost,force_record=False) - main entry point. Run the experiment on host qhost, all IP addresses; if force, make sure we record
     """
-    def __init__(self,config,debug=False):
+    def __init__(self,config,debug=False,runid=None):
         """Create the object.
         @param db - a proxied database connection
         @param debug - if we are debugging
@@ -227,6 +227,7 @@ class QueryHostEngine:
         self.config    = config
         self.db        = db.mysql( config)
         self.debug     = debug
+        self.runid     = runid
         if debug:
             self.db.debug  = debug
 
@@ -236,9 +237,6 @@ class QueryHostEngine:
         # Update the query count for the hostname
         self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
 
-        # I might want to lock, but then it all needs to be done with the same cursor.
-        # self.db.execute("SELECT * FROM dated WHERE id=%s LOCK IN SHARE MODE",(dated_id,))
-        # and self.db doesn't do that yet.
         cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
         wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,protocol=protocol,config=self.config)
         if wt:
@@ -255,9 +253,9 @@ class QueryHostEngine:
         self.db.execute(cmd, (qlast,dated_id))
 
         if wt and (wt.should_record() or record_all):
-            self.db.execute("INSERT IGNORE INTO times (host,cname,ipaddr,isv6,seq,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
-                       (wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),seq,is_https(protocol),wt.qdatetime_iso(),
+            self.db.execute("INSERT IGNORE INTO times (run,host,cname,ipaddr,isv6,seq,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
+                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
+                       (self.runid,wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),seq,is_https(protocol),wt.qdatetime_iso(),
                         wt.qduration,wt.rdatetime_iso(),
                         wt.qdatetime_iso(),wt.rdatetime_iso(),wt.rcode,wt.redirect))
         self.db.commit()
@@ -345,14 +343,15 @@ class QueryHostEngine:
                         # Get the id (we might be able to just read it)
                         dated_id = self.db.select1("select id from dated where host=%s and ipaddr=%s and https=%s and qdate=%s",
                                                    (qhost,ipaddr,is_https(protocol),qdate))[0]
-                    # And lock it for update
+
+                    # Now perform experiments, adding the redirects to to_query as necessary
                     for seq in range(self.config.getint('webtime','repeat',fallback=1)):
                         wt = self.queryhost_params(qhost=qhost,cname=cname,ipaddr=ipaddr,seq=seq,protocol=protocol,
                                                    dated_id=dated_id,record_all=record_all)
-                        if wt and wt.redirect:
+                        if wt and wt.redirect and (wt.redirect not in queried):
                             to_query.add(wt.redirect) # another to query
                         ret.append(wt)
-        return wt
+        return ret
 
                 
 
@@ -390,7 +389,7 @@ if __name__=="__main__":
 
     # Create a QueryHostEngine. It will not connect to the SQL Database until the connection is needed.
     # If we run in a multiprocessing pool, each process will get its own connection
-    qhe = QueryHostEngine( config, debug=args.debug )
+    qhe = QueryHostEngine( config, debug=args.debug, runid=runid )
     
     # Start parallel execution
     time_start = time.time()

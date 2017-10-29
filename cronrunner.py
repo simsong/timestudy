@@ -89,7 +89,7 @@ if __name__=="__main__":
 
     # TODO: Log in the database our start and end time
 
-    logger_info('{} PID {} Completed. took={:8.2f} seconds'.format(__file__,os.getpid(),took))
+    logger_info('{} PID {} Completed. res={} took={:8.2f} seconds'.format(__file__,os.getpid(),res,took))
 
     # finally, release our lock, so we can catch it again
     fcntl.flock(fd,fcntl.LOCK_UN)
