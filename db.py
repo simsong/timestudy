@@ -82,8 +82,10 @@ class mysql:
         self.execute_count = 0  # count number of executes
         self.mysql_max_executes = DEFAULT_MAX_EXECUTES
         self.debug         = config.getint('mysql','debug')
+        self.null          = config.getboolean('mysql','null', fallback=False) #  are we using the null driver?
 
     def connect(self):
+        if self.null: return
         self.mysql = get_mysql_driver()
         try:
             self.conn = self.mysql.connect(host=self.config.get("mysql","host"),
@@ -119,11 +121,16 @@ class mysql:
                 c.execute(stmt)
 
     def mysql_version(self):
+        if self.null: return '5.0.0-NULL'
         return self.select1("select version();")[0]
 
     def execute(self,cmd,args=None):
         """Execute an SQL command and return the cursor, which can be used as an iterator.
         Connect to the database if necessary."""
+        if self.null:
+            if self.debug:
+                print("null.execute({}) PID:{} ".format(cmd % args,os.getpid()))
+            return
         self.execute_count += 1
         if self.mysql_max_executes and self.execute_count > self.mysql_max_executes:
             self.close()        # close out and reconnect
@@ -150,10 +157,14 @@ class mysql:
     
     def select1(self,cmd,args=None):
         """execute an SQL command and return the first row"""
+        if self.null: return (None,)
         cursor = self.execute(cmd,args) # debug handled by execute()
         return cursor.fetchone()
 
     def commit(self):
+        if self.null:
+            print("null.COMMIT PID:{}".format(os.getpid()))
+            return
         if self.debug: print("db.COMMIT PID:{}".format(os.getpid()))
         self.conn.commit()
 

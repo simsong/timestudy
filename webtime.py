@@ -14,6 +14,7 @@ import db
 import configparser
 import socket
 import struct
+import json
 
 MIN_TIME = 3.0                          # Don't record more off than this
 CONFIG_INI = "config.ini"
@@ -101,8 +102,9 @@ class WebTime():
     @param qdatetime - a datetime object when the query was made
     @param rdatetime - the datetime returned by the remote system.
     """
-    def __init__(self,qhost=None,qipaddr=None,qdatetime=None,
-                 qduration=None,rdatetime=None,rcode=None,mintime=MIN_TIME,redirect=None):
+    def __init__(self,qhost=None,qipaddr=None,cname=None,
+                 qdatetime=None,qduration=None,protocol=None,rdatetime=None,headers=None,
+                 rcode=None,mintime=MIN_TIME,redirect=None):
         def fixtime(dt):
             try:
                 return dt.astimezone(pytz.utc)
@@ -110,15 +112,18 @@ class WebTime():
                 return dt.replace(tzinfo=pytz.utc)
         self.qhost      = qhost
         self.qipaddr    = qipaddr
+        self.cname      = cname
         self.qdatetime  = fixtime(qdatetime)
         self.qduration  = qduration
         self.rdatetime  = fixtime(rdatetime)
         self.rcode      = rcode # response code
         self.mintime    = mintime
+        self.protocol   = protocol
         self.redirect   = redirect
+        self.headers    = headers
 
     def __repr__(self):
-        return "<WebTime qhost:{} qipaddr:{} qdatetime:{} offset_seconds:{}>".format(self.qhost,self.qipaddr,self.qdatetime,self.offset_seconds())
+        return "<WebTime {}://{} ({}) ({}) qdatetime:{} offset_seconds:{}>".format(self.protocol,self.qhost,self.cname,self.qipaddr,self.qdatetime,self.offset_seconds())
 
     def offset(self):
         try:
@@ -153,7 +158,7 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return self.wrong_time() or should_record_hostname(self.qhost)
 
-def WebTimeExp(*,domain=None,ipaddr=None,protocol=None,config=None):
+def WebTimeExp(*,domain=None,ipaddr=None,cname=None,protocol=None,config=None):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
     """Find the webtime of a particular domain and IP address"""
 
@@ -199,10 +204,14 @@ def WebTimeExp(*,domain=None,ipaddr=None,protocol=None,config=None):
             redirect = urlparse(r.headers.get('Location')).hostname
         except Exception:
             redirect = None
-        return WebTime(qhost=domain,qipaddr=ipaddr,qdatetime=qdatetime,
+        return WebTime(qhost=domain,qipaddr=ipaddr,cname=cname,
+                       qdatetime=qdatetime,
                        qduration=qduration,
                        rdatetime=date,
-                       rcode=r.status_code,redirect = redirect)
+                       protocol=protocol,
+                       rcode=r.status_code,
+                       headers=r.headers,
+                       redirect = redirect)
     # Too many retries
     if self.debug:
         print("ERROR too many retries")
@@ -238,7 +247,7 @@ class QueryHostEngine:
         self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
 
         cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
-        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,protocol=protocol,config=self.config)
+        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,cname=cname,protocol=protocol,config=self.config)
         if wt:
             qlast = wt.qtime()
             if wt.wrong_time():
@@ -251,13 +260,17 @@ class QueryHostEngine:
 
         cmd += " WHERE id=%s"
         self.db.execute(cmd, (qlast,dated_id))
-
+
         if wt and (wt.should_record() or record_all):
-            self.db.execute("INSERT IGNORE INTO times (run,host,cname,ipaddr,isv6,seq,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
-                       (self.runid,wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),seq,is_https(protocol),wt.qdatetime_iso(),
-                        wt.qduration,wt.rdatetime_iso(),
-                        wt.qdatetime_iso(),wt.rdatetime_iso(),wt.rcode,wt.redirect))
+            # Record wrong time!
+            cursor = self.db.execute("INSERT INTO times (run,host,cname,ipaddr,isv6,seq,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
+                                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
+                                (self.runid,wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),seq,is_https(protocol),wt.qdatetime_iso(),
+                                 wt.qduration,wt.rdatetime_iso(),
+                                 wt.qdatetime_iso(),wt.rdatetime_iso(),wt.rcode,wt.redirect))
+            if cursor and cursor.rowcount==1:
+                self.db.execute("INSERT INTO headers (timeid,headers) values (%s,%s)",
+                                (cursor.lastrowid,json.dumps(dict(wt.headers))))
         self.db.commit()
         return wt
         
@@ -335,9 +348,10 @@ class QueryHostEngine:
                 for protocol in self.config.get('hosts','protocol').split(','):
 
                     # Make sure that this (host,ipaddr,protocol) combination is in dated
-                    cursor = self.db.execute("INSERT IGNORE INTO dated (host,ipaddr,isv6,https,qdate,qfirst) VALUES (%s,%s,%s,%s,%s,%s)",
+                    cursor = self.db.execute("INSERT IGNORE INTO dated (host,ipaddr,isv6,https,qdate,qfirst) "
+                                             "VALUES (%s,%s,%s,%s,%s,%s)",
                                              (qhost,ipaddr,is_v6(ipaddr),is_https(protocol),qdate,qtime))
-                    if cursor.rowcount==1:
+                    if cursor and cursor.rowcount==1:
                         dated_id = cursor.lastrowid
                     else:
                         # Get the id (we might be able to just read it)
@@ -353,7 +367,23 @@ class QueryHostEngine:
                         ret.append(wt)
         return ret
 
-                
+def query_interactive(config,hosts):
+    """Query a remote system..."""
+    if not args.db:
+        config.set('mysql','null', 'True')
+    print("GMT Time: {}".format(time.asctime(time.gmtime(time.time()))))
+    qhe = QueryHostEngine( config, debug=args.debug)
+    for host in hosts:
+        print("> "+host)
+        if ":" in host:
+            (protocol,qhost,ipaddr) = host.split(":",2)
+            print(qhe.queryhost_params(qhost=qhost,cname=None,ipaddr=ipaddr,seq=0,protocol='http',dated_id=None,record_all=False))
+            continue
+        for wt in qhe.queryhost(host):
+            print(wt)
+            if args.debug:
+                for h in wt.headers:
+                    print("    {}: {}".format(h,wt.headers[h]))
 
 if __name__=="__main__":
     import argparse
@@ -361,10 +391,13 @@ if __name__=="__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
+    parser.add_argument("--verbose",action="store_true",help="Be more verbose")
     parser.add_argument("--config",help="config file",default=CONFIG_INI)
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
+    parser.add_argument("--db",action="store_true",help="When running interactive, write to the database")
     parser.add_argument("-j","--threads",type=int,help="Specify number of threads",default=0)
+    parser.add_argument("hosts",nargs="+",help="Just query these hosts (or host:ipaddr) directly")
 
     args = parser.parse_args()
     config = db.get_mysql_config(args.config)       # prep it with default MySQL parameters
@@ -372,6 +405,10 @@ if __name__=="__main__":
     if config.getint('mysql','debug'):
         args.debug = 1          # override
 
+    if args.hosts:
+        query_interactive(config,args.hosts)
+        exit(0)
+    
     # Make sure MySQL works. We do this here so that we don't report
     # that we can't connect to MySQL after the loop starts.  We cache
     # the results in w to avoid reundent connections to the MySQL

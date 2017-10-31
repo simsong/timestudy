@@ -45,6 +45,23 @@ CREATE TABLE `dated` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `headers`
+--
+
+DROP TABLE IF EXISTS `headers`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `headers` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `timeid` int(11) NOT NULL,
+  `headers` mediumtext,
+  PRIMARY KEY (`id`),
+  KEY `timeid` (`timeid`),
+  CONSTRAINT `headers_ibfk_1` FOREIGN KEY (`timeid`) REFERENCES `times` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `hosts`
 --
 
@@ -105,9 +122,11 @@ DROP TABLE IF EXISTS `times`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `times` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `run` int(11) DEFAULT NULL,
   `host` varchar(255) DEFAULT NULL,
   `ipaddr` varchar(39) DEFAULT NULL,
   `isv6` int(11) DEFAULT NULL,
+  `seq` int(11) DEFAULT NULL,
   `cname` varchar(255) DEFAULT NULL,
   `qdatetime` datetime DEFAULT NULL,
   `qduration` float DEFAULT NULL,
@@ -133,4 +152,4 @@ CREATE TABLE `times` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2017-10-29 14:46:27
+-- Dump completed on 2017-10-31  0:05:10
