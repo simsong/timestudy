@@ -104,7 +104,7 @@ class WebTime():
     """
     def __init__(self,qhost=None,qipaddr=None,cname=None,
                  qdatetime=None,qduration=None,protocol=None,rdatetime=None,headers=None,
-                 rcode=None,mintime=MIN_TIME,redirect=None):
+                 rcode=None,mintime=MIN_TIME,redirect=None,url=None):
         def fixtime(dt):
             try:
                 return dt.astimezone(pytz.utc)
@@ -121,9 +121,10 @@ class WebTime():
         self.protocol   = protocol
         self.redirect   = redirect
         self.headers    = headers
+        self.url        = url
 
     def __repr__(self):
-        return "<WebTime {}://{} ({}) ({}) qdatetime:{} offset_seconds:{}>".format(self.protocol,self.qhost,self.cname,self.qipaddr,self.qdatetime,self.offset_seconds())
+        return "<WebTime {} ({}) ({}) qdatetime:{} offset_seconds:{}>".format(self.url,self.cname,self.qipaddr,self.qdatetime,self.offset_seconds())
 
     def offset(self):
         try:
@@ -158,18 +159,14 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return self.wrong_time() or should_record_hostname(self.qhost)
 
-def WebTimeExp(*,domain=None,ipaddr=None,cname=None,protocol=None,config=None):
+def WebTimeExp(*,domain,ipaddr,cname,protocol,config,seq):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
     """Find the webtime of a particular domain and IP address"""
 
-    assert (domain!=None)
-    assert (ipaddr!=None)
-    assert (config!=None)
-    assert (protocol!=None)
-
-    import requests,socket,email,sys
-    url = "{}://{}/".format(protocol,domain)
+    import requests,socket,email,sys,random
     for i in range(config.getint('webtime','retry')):
+        random_str = "".join(chr(random.randint(97,122)) for _ in range(8))
+        url = "{}://{}/webtime_experiment_{}?i={}&seq={}".format(protocol,domain,random_str,i,seq)
         s = requests.Session()
         try:
             t0 = time.time()
@@ -211,7 +208,8 @@ def WebTimeExp(*,domain=None,ipaddr=None,cname=None,protocol=None,config=None):
                        protocol=protocol,
                        rcode=r.status_code,
                        headers=r.headers,
-                       redirect = redirect)
+                       redirect = redirect,
+                       url = url)
     # Too many retries
     if self.debug:
         print("ERROR too many retries")
@@ -247,7 +245,7 @@ class QueryHostEngine:
         self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
 
         cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
-        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,cname=cname,protocol=protocol,config=self.config)
+        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,cname=cname,protocol=protocol,config=self.config,seq=seq)
         if wt:
             qlast = wt.qtime()
             if wt.wrong_time():

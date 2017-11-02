@@ -162,9 +162,7 @@ class mysql:
         return cursor.fetchone()
 
     def commit(self):
-        if self.null:
-            print("null.COMMIT PID:{}".format(os.getpid()))
-            return
+        if self.null:  return
         if self.debug: print("db.COMMIT PID:{}".format(os.getpid()))
         self.conn.commit()
 
