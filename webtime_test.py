@@ -93,6 +93,7 @@ def test_get_ip_addrs():
     addrs = get_ip_addrs("google-public-dns-a.google.com")
     assert "8.8.8.8" in addrs
 
+
 def test_QueryHostEngine():
     import time,datetime
     config = db.get_mysql_config("config.ini")
