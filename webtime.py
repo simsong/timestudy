@@ -55,9 +55,16 @@ def s_to_hms(secs):
 def should_record_hostname(host):
     return host.lower() in ALWAYS_RECORD_DOMAINS
 
+def fix_ipv6(ipaddr):
+    import ipaddress
+    if ":" in ipaddr:
+        return ipaddress.ip_address(ipaddr).exploded
+    else:
+        return ipaddr
+
 def get_ip_addrs(hostname):
     """Get all of the IP addresses for a hostname"""
-    return set([i[4][0] for i in socket.getaddrinfo(hostname, 0)])
+    return set( [ fix_ipv6(i[4][0]) for i in socket.getaddrinfo(hostname, 0)])
 
 def get_cname(hostname):
     """Return the CNAME for hostname, if it exists"""
