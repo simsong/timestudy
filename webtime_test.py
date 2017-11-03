@@ -81,11 +81,11 @@ def test_WebTime():
 
 
 def test_WebTimeExp():
-    w = WebTimeExp(domain=GOOD_TIME,ipaddr=GOOD_TIME_IP,protocol='http',config=db.get_mysql_config("config.ini"))
+    w = WebTimeExp(qhost=GOOD_TIME,ipaddr=GOOD_TIME_IP,protocol='http',config=db.get_mysql_config("config.ini"),cname='',db=None)
     assert w.offset() < datetime.timedelta(seconds=GOOD_TIME_CORRECT)       # we should be off by less than 5 seconds
 
 def test_WebTimeExp_redirect():
-    w = WebTimeExp(domain='nist.gov',protocol='https',ipaddr='50.17.216.216',config=db.get_mysql_config("config.ini"))
+    w = WebTimeExp(qhost='nist.gov',protocol='https',ipaddr='50.17.216.216',config=db.get_mysql_config("config.ini"),db=None,cname='')
     assert w.rcode in [301,302,303]
     assert w.redirect=='www.nist.gov'
 

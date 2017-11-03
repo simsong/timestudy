@@ -104,7 +104,7 @@ class WebTime():
     """
     def __init__(self,qhost=None,qipaddr=None,cname=None,
                  qdatetime=None,qduration=None,protocol=None,rdatetime=None,headers=None,
-                 rcode=None,mintime=MIN_TIME,redirect=None,url=None):
+                 rcode=None,mintime=MIN_TIME,redirect=None,url=None,seq=None):
         def fixtime(dt):
             try:
                 return dt.astimezone(pytz.utc)
@@ -122,6 +122,7 @@ class WebTime():
         self.redirect   = redirect
         self.headers    = headers
         self.url        = url
+        self.seq        = seq
 
     def __repr__(self):
         return "<WebTime {} ({}) ({}) qdatetime:{} offset_seconds:{}>".format(self.url,self.cname,self.qipaddr,self.qdatetime,self.offset_seconds())
@@ -159,14 +160,22 @@ class WebTime():
         """Return True if we should record, which is if the time is from time.gov or if it is wrong"""
         return self.wrong_time() or should_record_hostname(self.qhost)
 
-def WebTimeExp(*,domain,ipaddr,cname,protocol,config,seq):
+def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
     """Like WebTime, but performs the experiment and returns a WebTime object with the results"""
-    """Find the webtime of a particular domain and IP address"""
+    """Find the webtime of a particular qhost and IP address"""
+
+    # Figure out the seq
+    if db:
+        db.execute("INSERT INTO hostseq (host,ipaddr,seq) values (%s,%s,1) "
+                   "ON DUPLICATE KEY UPDATE seq=seq+1",(qhost,ipaddr))
+        seq = db.select1("SELECT seq from hostseq where host=%s and ipaddr=%s",(qhost,ipaddr))[0]
+    else:
+        seq = None
 
     import requests,socket,email,sys,random
     for i in range(config.getint('webtime','retry')):
         random_str = "".join(chr(random.randint(97,122)) for _ in range(8))
-        url = "{}://{}/webtime_experiment_{}?i={}&seq={}".format(protocol,domain,random_str,i,seq)
+        url = "{}://{}/webtime_experiment_{}?i={}&seq={}".format(protocol,qhost,random_str,i,seq)
         s = requests.Session()
         try:
             t0 = time.time()
@@ -191,7 +200,7 @@ def WebTimeExp(*,domain,ipaddr,cname,protocol,config,seq):
             continue        # no date!
         except ValueError:
             f = open("error.log","a")
-            f.write("{} now: {} host: {} ipaddr: {}  Date: {}".format(time.localtime(),time.time(),domain,ipaddr,date))
+            f.write("{} now: {} host: {} ipaddr: {}  Date: {}".format(time.localtime(),time.time(),qhost,ipaddr,date))
             f.close()
             continue
         qduration = t1-t0
@@ -201,7 +210,7 @@ def WebTimeExp(*,domain,ipaddr,cname,protocol,config,seq):
             redirect = urlparse(r.headers.get('Location')).hostname
         except Exception:
             redirect = None
-        return WebTime(qhost=domain,qipaddr=ipaddr,cname=cname,
+        return WebTime(qhost=qhost,qipaddr=ipaddr,cname=cname,
                        qdatetime=qdatetime,
                        qduration=qduration,
                        rdatetime=date,
@@ -209,7 +218,8 @@ def WebTimeExp(*,domain,ipaddr,cname,protocol,config,seq):
                        rcode=r.status_code,
                        headers=r.headers,
                        redirect = redirect,
-                       url = url)
+                       url = url,
+                       seq = seq)
     # Too many retries
     if self.debug:
         print("ERROR too many retries")
@@ -238,14 +248,14 @@ class QueryHostEngine:
         if debug:
             self.db.debug  = debug
 
-    def queryhost_params(self,*,qhost,cname,ipaddr,seq,protocol,dated_id,record_all):
+    def queryhost_params(self,*,qhost,cname,ipaddr,protocol,dated_id,record_all):
         """Perform a query of qhost; return the WebTime object if the experiment was successful."""
 
         # Update the query count for the hostname
         self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
 
         cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
-        wt = WebTimeExp(domain=qhost,ipaddr=ipaddr,cname=cname,protocol=protocol,config=self.config,seq=seq)
+        wt = WebTimeExp(qhost=qhost,ipaddr=ipaddr,cname=cname,protocol=protocol,config=self.config,db=self.db)
         if wt:
             qlast = wt.qtime()
             if wt.wrong_time():
@@ -263,7 +273,7 @@ class QueryHostEngine:
             # Record wrong time!
             cursor = self.db.execute("INSERT INTO times (run,host,cname,ipaddr,isv6,seq,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+
                                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TIMESTAMPDIFF(SECOND,%s,%s),%s,%s)",
-                                (self.runid,wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),seq,is_https(protocol),wt.qdatetime_iso(),
+                                (self.runid,wt.qhost,cname,wt.qipaddr,is_v6(ipaddr),wt.seq,is_https(protocol),wt.qdatetime_iso(),
                                  wt.qduration,wt.rdatetime_iso(),
                                  wt.qdatetime_iso(),wt.rdatetime_iso(),wt.rcode,wt.redirect))
             if cursor and cursor.rowcount==1:
@@ -274,7 +284,7 @@ class QueryHostEngine:
         
     def queryhost(self,qhost,force_record=False):
         """
-        Given the domain, get the IP addresses and query each one. 
+        Given the qhost, get the IP addresses and query each one. 
         Updates the dated table.
         If time should be recorded, update the times table.
         Return a list of WebTime objects for all successful queries.
@@ -317,14 +327,14 @@ class QueryHostEngine:
                 ipaddrs = get_ip_addrs(qhost)
                 if self.debug: print("DEBUG PID{}  qhost={} ipaddrs={}".format(os.getpid(),qhost,ipaddrs))
             except socket.gaierror as e:
-                self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'aierror',qdate,qtime))
-                self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,'aierror',qdate))
+                self.db.execute("INSERT INTO dated (host,ipaddr,qdate,qfirst) VALUES (%s,%s,%s,%s) "
+                                "ON DUPLICATE KEY UPDATE qlast=%s,ecount=ecount+1",(qhost,'aierror',qdate,qtime,qtime))
                 self.db.commit()
                 if self.debug: print("ERROR socket.aierror {} {}".format(qhost,str(e)))
                 continue
             except socket.herror as e:
-                self.db.execute("insert ignore into dated (host,ipaddr,qdate,qfirst) values (%s,%s,%s,%s)", (qhost,'herror',qdate,qtime))
-                self.db.execute("update dated set qlast=%s,ecount=ecount+1 where host=%s and ipaddr=%s and qdate=%s",(qtime,qhost,herror,qdate))
+                self.db.execute("INSERT INTO dated (host,ipaddr,qdate,qfirst) VALUES (%s,%s,%s,%s) "
+                                "ON DUPLICATE KEY UPDATE qlast=%s,ecount=count+1",(qhost,'herror',qdate,qtime,qtime))
                 self.db.commit()
                 if self.debug: print("ERROR socket.herror {} {}".format(qhost,str(e)))
                 continue
@@ -357,8 +367,8 @@ class QueryHostEngine:
                                                    (qhost,ipaddr,is_https(protocol),qdate))[0]
 
                     # Now perform experiments, adding the redirects to to_query as necessary
-                    for seq in range(self.config.getint('webtime','repeat',fallback=1)):
-                        wt = self.queryhost_params(qhost=qhost,cname=cname,ipaddr=ipaddr,seq=seq,protocol=protocol,
+                    for rep in range(self.config.getint('webtime','repeat',fallback=1)):
+                        wt = self.queryhost_params(qhost=qhost,cname=cname,ipaddr=ipaddr,protocol=protocol,
                                                    dated_id=dated_id,record_all=record_all)
                         if wt and wt.redirect and (wt.redirect not in queried):
                             to_query.add(wt.redirect) # another to query
