@@ -412,7 +412,7 @@ if __name__=="__main__":
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
     parser.add_argument("--db",action="store_true",help="When running interactive, write to the database")
     parser.add_argument("-j","--threads",type=int,help="Specify number of threads",default=0)
-    parser.add_argument("hosts",nargs="+",help="Just query these hosts (or host:ipaddr) directly")
+    parser.add_argument("hosts",nargs="*",help="Just query these hosts (or host:ipaddr) directly")
 
     args = parser.parse_args()
     config = db.get_mysql_config(args.config)       # prep it with default MySQL parameters

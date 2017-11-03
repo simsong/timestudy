@@ -38,9 +38,9 @@ def gen_report(dbc,smin,smax,desc):
         print("Representative hosts:")
         hosts = hosts[0:MAX_HOSTS_REPORT]
 
-    fmt1 = "{:36}   {:>10} {:>10}        {:>10}"
-    fmt2 = "{:36}   {:10} {:10} ({:3.0f}%) {:10} "
-    fmt3 = "   {:36}{:10} {:10}        {:10} "
+    fmt1 = "{:38}   {:>10} {:>10}        {:>10}"
+    fmt2 = "{:38}   {:10} {:10} ({:3.0f}%) {:10} "
+    fmt3 = "   {:38}{:10} {:10}        {:10} "
     print(fmt1.format("Host","Total","Wrong","Max Offset"))
 
     for host in hosts:
