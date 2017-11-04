@@ -166,9 +166,9 @@ class mysql:
         if self.debug: print("db.COMMIT PID:{}".format(os.getpid()))
         self.conn.commit()
 
-    def log(self,msg):
+    def log(self,msg,level='INFO'):
         """Save msg in the log table, return the log id"""
-        c = self.execute("INSERT INTO log (value) VALUES (%s)",(msg+" pid={}".format(os.getpid()),))
+        c = self.execute("INSERT INTO log (pid,level,value) VALUES (%s,%s,%s)",(os.getpid(),level,msg))
         self.conn.commit()
         return c.lastrowid
 

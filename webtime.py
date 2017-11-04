@@ -189,10 +189,13 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
             r = s.head(url,timeout=config.getint('webtime','timeout'),allow_redirects=False)
             t1 = time.time()
         except requests.exceptions.ConnectTimeout as e:
+            db.log("error:connect-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
             return None
         except requests.exceptions.ConnectionError as e:
+            db.log("error:connetion-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
             return None
         except requests.exceptions.ReadTimeout as e:
+            db.log("error:read-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
             return None
 
         try:
@@ -204,11 +207,10 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
         try:
             date = email.utils.parsedate_to_datetime(val)
         except TypeError:
+            db.log("error:date-type-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
             continue        # no date!
         except ValueError:
-            f = open("error.log","a")
-            f.write("{} now: {} host: {} ipaddr: {}  Date: {}".format(time.localtime(),time.time(),qhost,ipaddr,date))
-            f.close()
+            db.log("error:date-value-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
             continue
         qduration = t1-t0
         qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
@@ -229,7 +231,7 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
                        seq = seq)
     # Too many retries
     if self.debug:
-        print("ERROR too many retries")
+        db.log("error:too-many-retries host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
     return None
         
         
