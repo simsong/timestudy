@@ -173,9 +173,9 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
 
     # Figure out the seq
     if db:
-        db.execute("INSERT INTO hostseq (host,ipaddr,seq) values (%s,%s,1) "
+        db.execute("INSERT INTO hostseq (host,ipaddr,seq,created) values (%s,%s,1,NOW()) "
                    "ON DUPLICATE KEY UPDATE seq=seq+1",(qhost,ipaddr))
-        seq = db.select1("SELECT seq from hostseq where host=%s and ipaddr=%s",(qhost,ipaddr))[0]
+        seq = db.select1("SELECT seq FROM hostseq WHERE host=%s AND ipaddr=%s",(qhost,ipaddr))[0]
     else:
         seq = None
 
@@ -190,13 +190,13 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
             t1 = time.time()
         except requests.exceptions.ConnectTimeout as e:
             db.log("error:connect-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
-            return None
+            continue
         except requests.exceptions.ConnectionError as e:
             db.log("error:connetion-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
-            return None
+            continue
         except requests.exceptions.ReadTimeout as e:
             db.log("error:read-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
-            return None
+            continue
 
         try:
             val = r.headers["Date"]
@@ -219,13 +219,13 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
             redirect = urlparse(r.headers.get('Location')).hostname
         except Exception:
             redirect = None
-        return WebTime(qhost=qhost,qipaddr=ipaddr,cname=cname,
-                       qdatetime=qdatetime,
-                       qduration=qduration,
-                       rdatetime=date,
-                       protocol=protocol,
-                       rcode=r.status_code,
-                       headers=r.headers,
+        return WebTime(qhost = qhost,qipaddr=ipaddr,cname=cname,
+                       qdatetime = qdatetime,
+                       qduration = qduration,
+                       rdatetime = date,
+                       protocol = protocol,
+                       rcode = r.status_code,
+                       headers = r.headers,
                        redirect = redirect,
                        url = url,
                        seq = seq)
