@@ -4,22 +4,27 @@ Task List.
 
 Done things:
 + Set up mirror on dreamhost (2017-09-04) 208.113.132.46
-- Modify webtime.py so that it gets a lock
-- bring webtime.py and webtimev6.py back into a single program.
+ + Revise scanner to be run every five minutes out of cron; add locks.
+ + Add cname info to query process.
+ + Implmenet randomization algorithm; allow selection of choice algorithm to be specified in config file.
++ Modify webtime.py so that it gets a lock
++ bring webtime.py and webtimev6.py back into a single program.
+
++ Expanded list of hosts to be checked.
+   + Quesiton - can we put these hosts into the git repository?
+   + Answer - No, we read them on the fly from the remote website, so they are up to date
 
 ================================================================
 To do things:
 
 Simson:
- - Create infrastructure for test & production environments. 
+ + Create infrastructure for test & production environments. 
    - Document in README.md so that Alex can follow. 
  - Revise database schema to allow for multiple cohorts of hosts.
- - Revise scanner to be run every minute out of cron; add locks.
- - Add cname and geolocation info to query process.
- - Implmenet randomization algorithm; allow selection of choice algorithm to be specified in config file.
+ - Add geolocation info to query process.
+ - move all error logging to times table and a log table.
 
 Alex:
-(Simson recommends making changes in this order for simplicity.)
  - Create a "make" target that makes all plots in directory
    specified by config file.
  - Add additional HTML page outputs reporting on full database.
@@ -31,8 +36,6 @@ Alex:
    - Improve HTML display to group plots together.
 
 Doug: 
- - Provide Alex with additional hosts to be checked.
-   - Quesiton - can we put these hosts into the git repository?
  - Come up with clearly stated research and publication goals.
  - Reach out to government sponsors (DHS? FDIC?) to find out if there is interest in this project.
  - Continue to research other technologies that may benefit project. 
