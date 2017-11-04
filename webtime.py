@@ -189,11 +189,11 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
             r = s.head(url,timeout=config.getint('webtime','timeout'),allow_redirects=False)
             t1 = time.time()
         except requests.exceptions.ConnectTimeout as e:
-            return continue
+            continue
         except requests.exceptions.ConnectionError as e:
-            return continue
+            continue
         except requests.exceptions.ReadTimeout as e:
-            return continue
+            continue
 
         try:
             val = r.headers["Date"]
