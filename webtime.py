@@ -22,8 +22,12 @@ DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
 DEFAULT_TIMEOUT = 5                     # default timeout, in seconds
 ALWAYS_RECORD_DOMAINS = set(['time.gov','time.nist.gov','time.glb.nist.gov','ntp1.glb.nist.gov'])
 DEFAULT_THREADS=8
+USER_AGENT='Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1'
 
 prefixes = ["","","","www.","www.","www.","www1.","www2.","www3."]
+headers = {
+    'User-Agent' : USER_AGENT
+}
 
 def ip2long(ip):
     """
@@ -186,16 +190,16 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
         s = requests.Session()
         try:
             t0 = time.time()
-            r = s.head(url,timeout=config.getint('webtime','timeout'),allow_redirects=False)
+            r = s.head(url,timeout=config.getint('webtime','timeout'),headers=headers,allow_redirects=False)
             t1 = time.time()
         except requests.exceptions.ConnectTimeout as e:
-            db.log("error:connect-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
+            db.log("error:connect-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERR')
             continue
         except requests.exceptions.ConnectionError as e:
-            db.log("error:connetion-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
+            db.log("error:connetion-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERR')
             continue
         except requests.exceptions.ReadTimeout as e:
-            db.log("error:read-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
+            db.log("error:read-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERR')
             continue
 
         try:
@@ -207,10 +211,10 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
         try:
             date = email.utils.parsedate_to_datetime(val)
         except TypeError:
-            db.log("error:date-type-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
+            db.log("error:date-type-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERR')
             continue        # no date!
         except ValueError:
-            db.log("error:date-value-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
+            db.log("error:date-value-error host:{} ipaddr:{}".format(qhost,ipaddr),level='ERR')
             continue
         qduration = t1-t0
         qdatetime = datetime.datetime.fromtimestamp(t0+qduration/2,pytz.utc)
@@ -230,8 +234,7 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
                        url = url,
                        seq = seq)
     # Too many retries
-    if self.debug:
-        db.log("error:too-many-retries host:{} ipaddr:{}".format(qhost,ipaddr),level='ERROR')
+    db.log("error:too-many-retries host:{} ipaddr:{}".format(qhost,ipaddr),level='ERR')
     return None
         
         
@@ -339,13 +342,11 @@ class QueryHostEngine:
                 self.db.execute("INSERT INTO dated (host,ipaddr,qdate,qfirst) VALUES (%s,%s,%s,%s) "
                                 "ON DUPLICATE KEY UPDATE qlast=%s,ecount=ecount+1",(qhost,'aierror',qdate,qtime,qtime))
                 self.db.commit()
-                if self.debug: print("ERROR socket.aierror {} {}".format(qhost,str(e)))
                 continue
             except socket.herror as e:
                 self.db.execute("INSERT INTO dated (host,ipaddr,qdate,qfirst) VALUES (%s,%s,%s,%s) "
                                 "ON DUPLICATE KEY UPDATE qlast=%s,ecount=count+1",(qhost,'herror',qdate,qtime,qtime))
                 self.db.commit()
-                if self.debug: print("ERROR socket.herror {} {}".format(qhost,str(e)))
                 continue
 
             # Are we supposed to record all of the responses for this host?
