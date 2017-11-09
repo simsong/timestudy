@@ -95,6 +95,7 @@ CREATE TABLE `hostseq` (
   `ipaddr` varchar(255) NOT NULL,
   `seq` int(11) NOT NULL,
   `modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `host` (`host`,`ipaddr`),
   KEY `ipaddr` (`ipaddr`)
@@ -110,8 +111,10 @@ DROP TABLE IF EXISTS `log`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `log` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `pid` int(11) DEFAULT NULL,
   `modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `value` mediumtext,
+  `level` enum('EMERG','ALERT','CRIT','ERR','WARNING','NOTICE','INFO','DEBUG') NOT NULL DEFAULT 'INFO',
   PRIMARY KEY (`id`),
   KEY `modified` (`modified`),
   KEY `value` (`value`(255))
@@ -171,4 +174,4 @@ CREATE TABLE `times` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2017-11-03 18:16:07
+-- Dump completed on 2017-11-09 23:43:59
