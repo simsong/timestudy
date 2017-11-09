@@ -1,5 +1,6 @@
 # Configure CENTOS as necessary for Simson and this package
 # Designed to be run on a clean VM
+sudo yum -y install git         # you probably already did this
 sudo yum -y makecache fast 
 sudo yum -y install deltarpm yum-cron
 sudo yum -y install emacs
