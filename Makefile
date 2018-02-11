@@ -18,3 +18,20 @@ schema.sql: Makefile webtime.py
 backup:
 	@python3 db.py --dumpdb | gzip -9 >  database.sql.gz
 
+
+full:
+	@echo Make and publish all the graphs
+	python3 graph_gen_html_page.py 
+	mkdir -p /var/www/html/debug/hostplots
+	mv -f plots/*.html /var/www/html/debug/
+	mv -f plots/hostplots/*.png /var/www/html/debug/hostplots
+	chcon -R -t httpd_sys_rw_content_t /var/www/html/debug
+
+
+quick:
+	@echo Quick test of graph system
+	python3 graph_gen_html_page.py --host=airnow.gov --debug --nosizes
+	cp -r plots /var/www/html/debug/
+	chcon -R -t httpd_sys_rw_content_t /var/www/html/debug
+	@echo check out http://timedb.simson.net/debug/plots/
+

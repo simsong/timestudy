@@ -80,33 +80,6 @@ def gen_shared(ts1, ts2):
             ts.append(ts2[i])
     return ts  
 
-def mad_outliers(ts, threshold):
-    med = ts[len(ts)//2]
-    absdiff = [abs(t-med) for t in ts]
-    meddiff = absdiff[len(absdiff)//2]
-    if meddiff == 0:
-        return [abs(t) > abs(med) for t in absdiff]
-    else:
-        return [(t*0.6745)/meddiff > threshold for t in absdiff]
-
-def get_breaks(ts_sorted, avg_trend, threshold):
-    breaks = []
-    if avg_trend == 0:
-        trend_threshold = threshold
-    else:
-        trend_threshold = (1+threshold)*avg_trend
-    prev_os, class_min = ts_sorted[0], ts_sorted[0]
-    in_range = lambda x, y: (-trend_threshold <= (x-y) <= trend_threshold) or (-trend_threshold >= (x-y) >= trend_threshold)
-    for offset in ts_sorted:
-        if not in_range(offset, prev_os):
-            breaks.append((class_min, prev_os))
-            class_min = offset
-            prev_os = offset
-        else:
-            prev_os = offset
-            
-    return breaks
-        
 #if __name__ == "__main__":
 #    rate = random.uniform(-1, 1)
 #    ts = gen_jumpy(0.5, 0, 10, 100)

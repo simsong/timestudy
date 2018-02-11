@@ -20,10 +20,13 @@ import re
 import operator
 import time
 import configparser
+import statistics
 
 from datetime import datetime, timedelta
+import pytz
 
 MIN_POINTS_TO_PLOT=10
+DEFAULT_TIME_ZONE='America/New_York'
 
 import db
 
@@ -64,6 +67,36 @@ STATS_FMT=""""%s (%d points)
 def show_tables(dbc):
     print("tables:",dbc.execute("SHOW TABLES").fetchall())
 
+# The mysterious mad_outliers function
+def mad_outliers(ts, threshold):
+    med = ts[len(ts)//2]
+    absdiff = [abs(t-med) for t in ts]
+    meddiff = absdiff[len(absdiff)//2]
+    if meddiff == 0:
+        return [abs(t) > abs(med) for t in absdiff]
+    else:
+        return [(t*0.6745)/meddiff > threshold for t in absdiff]
+
+
+# The mysterious get_breaks function
+def get_breaks(ts_sorted, avg_trend, threshold):
+    breaks = []
+    if avg_trend == 0:
+        trend_threshold = threshold
+    else:
+        trend_threshold = (1+threshold)*avg_trend
+    prev_os, class_min = ts_sorted[0], ts_sorted[0]
+    in_range = lambda x, y: (-trend_threshold <= (x-y) <= trend_threshold) or (-trend_threshold >= (x-y) >= trend_threshold)
+    for offset in ts_sorted:
+        if not in_range(offset, prev_os):
+            breaks.append((class_min, prev_os))
+            class_min = offset
+            prev_os = offset
+        else:
+            prev_os = offset
+            
+    return breaks
+        
 # The mysterious gen_chars function. What does this do?
 def gen_chars(ts):
     zeroes = ts.count(0)
@@ -121,6 +154,8 @@ def page_by_host(dbc, outdir):
         htmlcode += ("<p style='font-size:20px'>Rows in 'dated': %s</p>\n" % datedsize)
         htmlcode += ("<p style='font-size:20px'>Database size: %s MB</p>\n" % tablesize)
         
+    now = datetime.now(pytz.timezone(DEFAULT_TIME_ZONE)).strftime("%Y-%m-%d %H:%M:%S %z")
+
     htmlcode += ("<p style='font-size:20px'>Latest update: %s</p>\n" % datetime.strftime(datetime.now(), "%m-%d-%Y %H:%M:%S"))
     htmlcode += "<table>\n"
     htmlfile.write(htmlcode)
@@ -187,10 +222,10 @@ def page_by_host(dbc, outdir):
             chars = gen_chars(offsets)
             f_query = qdates[0].strftime('%m/%d/%Y')
             l_query = qdates[len(qdates)-1].strftime('%m/%d/%Y')
-            offset_mean = sum(offsets)/num_points
-            offset_std = (sum([(i-offset_mean)**2 for i in offsets])/num_points)**0.5
-            rtt_mean = sum(rtts)/num_points
-            rtt_std = (sum([(i-rtt_mean)**2 for i in rtts])/num_points)**0.5
+            offset_mean = statistics.mean(offsets)
+            offset_std  = statistics.stdev(offsets)
+            rtt_mean = statistics.mean(rtts)
+            rtt_std  = statistics.stdev(rtts)
             stats_str = STATS_FMT % (ip, len(points), f_query, l_query, zeroes, 100*zeroes/total_queries, chars[1], 
                                      offset_mean, offset_std, min(offsets), max(offsets), rtt_mean, rtt_std, min(rtts), max(rtts))
             #                    plt.plot(times, offsets, "-x", label=ip)
@@ -213,7 +248,7 @@ def page_by_host(dbc, outdir):
             plt.savefig(fname, bbox_inches='tight')
             t1 = time.time()
             if args.debug:
-                print("saved figure to {} in {.4}s".format(fname,t1-t0))
+                print("saved figure to {} in {:.4}s".format(fname,t1-t0))
             if not hyper_printed:
                 host_anchor = host.replace(".","_")
                 htmlfile.write("<tr>\n\t<td><a href='http://%s'>%s</a></td></tr>" % (host, host))
@@ -282,6 +317,7 @@ def page_by_ip(dbc, img_dir, html_dir):
                 plt.savefig(img_dir+img_name, bbox_inches='tight')
                 htmlfile.write("<tr>\n\t<th><img src='%s' alt='%s'></th>" % (img_dir.split("/")[-2:][0]+'/'+img_name, "timeseries plot " + str(num_hosts)))
                 htmlfile.write("\t<td align='left'><pre>%s</pre></td>\n</tr>\n" % (ip + ":\n" + str(hosts)[1:-1]))
+                htmlfile.flush()
     
     htmlfile.write("</table>")
     htmlfile.write("</html>")
