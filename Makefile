@@ -16,5 +16,5 @@ schema.sql: Makefile webtime.py
 	python3 db.py --dumpschema | sed 's/ AUTO_INCREMENT=[0-9]*//g' > schema.sql
 
 backup:
-	python3 db.py --dumpdb > database.sql
+	@python3 db.py --dumpdb | gzip -9 >  database.sql.gz
 

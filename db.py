@@ -127,9 +127,10 @@ class mysql:
     def execute(self,cmd,args=None):
         """Execute an SQL command and return the cursor, which can be used as an iterator.
         Connect to the database if necessary."""
+        import mysql.connector.errors
         if self.null:
             if self.debug:
-                print("null.execute({}) PID:{} ".format(cmd % args,os.getpid()))
+                print("null.execute({})   PID:{} ".format(cmd % args,os.getpid()))
             return
         self.execute_count += 1
         if self.mysql_max_executes and self.execute_count > self.mysql_max_executes:
@@ -139,20 +140,28 @@ class mysql:
         if self.debug:
             try:
                 if '%s' in cmd:
-                    print("db.execute({}) PID:{} ".format(cmd % args,os.getpid()),end='')
+                    print("db.execute({})   PID:{} ".format(cmd % args,os.getpid()),end='')
                 else:
                     assert (args==None)
-                    print("db.execute({}) PID:{} ".format(cmd,os.getpid()),end='')
+                    print("db.execute({})   PID:{} ".format(cmd,os.getpid()),end='')
             except TypeError as e:
                 print("cmd=",cmd)
                 print("args=",args)
                 raise e
-            t0 = time.time()
+        self.t0 = time.time()
         cursor = self.conn.cursor()
-        cursor.execute(cmd,args)
+        try:
+            cursor.execute(cmd,args)
+        except mysql.connector.errors.ProgrammingError as e:
+            print("")
+            print("*** MySQL Programming Error ***")
+            print("cmd=",cmd)
+            print("args=",args)
+            raise e
+        self.t1 = time.time()
+        self.lasttime = self.t1-self.t0
         if self.debug:
-            t1 = time.time()
-            print("{}".format(t1-t0))
+            print("t={:.3f}".format(self.lasttime))
         return cursor
     
     def select1(self,cmd,args=None):
@@ -163,7 +172,7 @@ class mysql:
 
     def commit(self):
         if self.null:  return
-        if self.debug: print("db.COMMIT PID:{}".format(os.getpid()))
+        if self.debug: print("db.COMMIT   PID:{}".format(os.getpid()))
         self.conn.commit()
 
     def log(self,msg,level='INFO'):
