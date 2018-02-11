@@ -14,7 +14,12 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdt
 from matplotlib.dates import MO
 
-import os, sys, pymysql, re, operator, time, graphgen, configparser
+import os
+import sys
+import re
+import operator
+import time
+import configparser
 
 from datetime import datetime, timedelta
 
@@ -58,6 +63,36 @@ STATS_FMT=""""%s (%d points)
 
 def show_tables(dbc):
     print("tables:",dbc.execute("SHOW TABLES").fetchall())
+
+# The mysterious gen_chars function. What does this do?
+def gen_chars(ts):
+    zeroes = ts.count(0)
+    ts_sorted = sorted(ts)
+    slopes = [ts[i+1] - ts[i] for i in range(len(ts)-1)]
+    slopes_sorted = sorted(slopes)
+    prev_slope = slopes[0]
+    slope_changes = 0
+    for s in slopes:
+        if prev_slope != 0 and not s/prev_slope > 0:
+            slope_changes += 1
+        prev_slope = s
+        
+    trendpoints, trendsum = 0, 0
+    is_outlier = mad_outliers(slopes_sorted, 3)
+    for i in range(len(is_outlier)):
+        if not is_outlier[i]:
+            trendpoints += 1
+            trendsum += slopes_sorted[i]
+            
+    if trendpoints == len(slopes_sorted):
+        avg_trend_len = len(ts)
+    else:
+        avg_trend_len = len(ts)//(len(is_outlier)-trendpoints)
+    avg_trend = trendsum/trendpoints
+    offset_breaks = get_breaks(ts_sorted, avg_trend, 1)
+    return (zeroes/len(ts), len(offset_breaks)+1, avg_trend_len/len(ts), avg_trend)
+
+
 
 HOSTPLOTS_SUBDIR='hostplots'
 def page_by_host(dbc, outdir):
@@ -132,7 +167,6 @@ def page_by_host(dbc, outdir):
                     print("    ... skipping. all_low={}  len(points)={}".format(all_low,len(points)))
                 continue
 
-            
             qpoints = []
             zeroes = 0
             total_queries = 0
@@ -150,7 +184,7 @@ def page_by_host(dbc, outdir):
             total_points += num_points
             epochtimes, times, offsets, rtts = zip(*sorted(points, key=operator.itemgetter(0)))
             # calculate the features and record them as a caption on the html page
-            chars = graphgen.gen_chars(offsets)
+            chars = gen_chars(offsets)
             f_query = qdates[0].strftime('%m/%d/%Y')
             l_query = qdates[len(qdates)-1].strftime('%m/%d/%Y')
             offset_mean = sum(offsets)/num_points
@@ -175,9 +209,11 @@ def page_by_host(dbc, outdir):
 
             plotsdir = os.path.join(outdir,HOSTPLOTS_SUBDIR)
             fname     = os.path.join(plotsdir,img_name)
+            t0 = time.time()
             plt.savefig(fname, bbox_inches='tight')
+            t1 = time.time()
             if args.debug:
-                print("saved figure to {}".format(fname))
+                print("saved figure to {} in {.4}s".format(fname,t1-t0))
             if not hyper_printed:
                 host_anchor = host.replace(".","_")
                 htmlfile.write("<tr>\n\t<td><a href='http://%s'>%s</a></td></tr>" % (host, host))
@@ -236,7 +272,7 @@ def page_by_ip(dbc, img_dir, html_dir):
                     num_hosts += 1
                     total_points += len(points)
                     epochtimes, times, offsets = zip(*sorted(points, key=operator.itemgetter(0)))
-                    chars = graphgen.gen_chars(offsets)
+                    chars = gen_chars(offsets)
                     plt.plot(times, offsets, "-x", label=host)
             if total_points > 0:
                 plt.gca().xaxis.set_major_formatter(mdt.DateFormatter('%m/%Y'))

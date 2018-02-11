@@ -107,33 +107,6 @@ def get_breaks(ts_sorted, avg_trend, threshold):
             
     return breaks
         
-def gen_chars(ts):
-    zeroes = ts.count(0)
-    ts_sorted = sorted(ts)
-    slopes = [ts[i+1] - ts[i] for i in range(len(ts)-1)]
-    slopes_sorted = sorted(slopes)
-    prev_slope = slopes[0]
-    slope_changes = 0
-    for s in slopes:
-        if prev_slope != 0 and not s/prev_slope > 0:
-            slope_changes += 1
-        prev_slope = s
-        
-    trendpoints, trendsum = 0, 0
-    is_outlier = mad_outliers(slopes_sorted, 3)
-    for i in range(len(is_outlier)):
-        if not is_outlier[i]:
-            trendpoints += 1
-            trendsum += slopes_sorted[i]
-            
-    if trendpoints == len(slopes_sorted):
-        avg_trend_len = len(ts)
-    else:
-        avg_trend_len = len(ts)//(len(is_outlier)-trendpoints)
-    avg_trend = trendsum/trendpoints
-    offset_breaks = get_breaks(ts_sorted, avg_trend, 1)
-    return (zeroes/len(ts), len(offset_breaks)+1, avg_trend_len/len(ts), avg_trend)
-
 #if __name__ == "__main__":
 #    rate = random.uniform(-1, 1)
 #    ts = gen_jumpy(0.5, 0, 10, 100)
