@@ -17,6 +17,9 @@ from matplotlib.dates import MO
 import os, sys, pymysql, re, operator, time, graphgen, configparser
 
 from datetime import datetime, timedelta
+
+MIN_POINTS_TO_PLOT=10
+
 import db
 
 
@@ -24,8 +27,8 @@ def reverse_host(host):
     """Give a hostname, reverse the order of the sections"""
     return ".".join(list(reversed(host.split('.'))))
 
-def ipaddrs_for_host(host):
-    return [row[0] for row in dbc.execute("SELECT DISTINCT ipaddr FROM times where host=%s",host)]
+def ipaddrs_for_host(dbc,host):
+    return [row[0] for row in dbc.execute("SELECT DISTINCT ipaddr FROM times where host=%s",(host,))]
 
 def get_sizes(dbc):
     c = dbc.execute("select table_schema 'DB Name', SUM(data_length+index_length)/1024/1024 'Database Size' FROM information_schema.TABLES where table_schema='time'")
@@ -37,21 +40,44 @@ def get_sizes(dbc):
         sizes.append(c.fetchall()[0][0])
     return (tablesize, sizes[0], sizes[1])
 
-def page_by_host(dbc, img_dir, html_dir):
+STATS_FMT=""""%s (%d points)
+        First query: %s
+        Last query: %s
+        zeroes: %d (%f%%)
+        num offset classes: %d
+        offset stats:
+        \tmean: %4f
+        \tstd. dev.: %4f
+        \tmin: %d
+        \tmax: %d
+        RTT stats:
+        \tmean: %4f
+        \tstd. dev.: %4f
+        \tmin: %4f
+        \tmax: %4f"""
+
+def show_tables(dbc):
+    print("tables:",dbc.execute("SHOW TABLES").fetchall())
+
+HOSTPLOTS_SUBDIR='hostplots'
+def page_by_host(dbc, outdir):
     if args.host:
         hosts = [args.host]
     else:
-        hosts = [row[0] for row in dbc.execute("SELECT DISTINCT host FROM times").fetchall()]
-
+        hosts = [row[0] for row in dbc.execute("SELECT DISTINCT host FROM times")]
     if args.debug:
         print("total hosts:",hosts)
 
     hosts_r = sorted([reverse_host(s) for s in hosts])
     epoch = datetime.utcfromtimestamp(0)
     num_hosts, num_empty_hosts = 0, 0
-    htmlfile = open(os.path.join(html_dir,"index.html"), 'w')
+    htmlfile = open(os.path.join(outdir,"index.html"), 'w')
     htmlcode = ""
     htmlfile.write("<!DOCTYPE html>\n\n<html>\n")
+
+    show_tables(dbc)
+    show_tables(dbc)
+    show_tables(dbc)
 
     if not args.nosizes:
         tablesize, timessize, datedsize = get_sizes(dbc)
@@ -69,9 +95,13 @@ def page_by_host(dbc, img_dir, html_dir):
         if args.debug:
             print("DEBUG: host {}".format(host))
         total_points = 0
-        ips = ipaddrs_for_host(host)
+
+        ips = ipaddrs_for_host(dbc,host)
+        if args.debug:
+            print("  ipaddresses: ",ips)
         if not ips:
             continue            # no ipaddresses for this host!
+
         hyper_printed = False
         stats_str = host+":\n"
         # Add in a timeseries line for each IP address associated with the hostname
@@ -82,82 +112,91 @@ def page_by_host(dbc, img_dir, html_dir):
             fig, ax1 = plt.subplots()
             ax2 = ax1.twinx()
             abs_sum = 0
-            c.execute("select qdatetime, offset, qduration from times where host='%s' and ipaddr='%s'" % (host, ip))
+            
             points = []
             all_low = True
-            for row in c.fetchall():
-                time, oset, rtt = row
-                oset = int(oset)
+            for (qdatetime,offset,qduration) in dbc.execute("SELECT qdatetime, offset, qduration FROM times WHERE host=%s AND ipaddr=%s",(host, ip)):
+                offset = int(offset)
                 # if the offset value is between -2 and 2, assume it is zero
-                if all_low and oset >= 3:
+                if abs(offset) >= 3:
                     all_low = False
-                epochseconds = int((time-epoch).total_seconds())
-                points.append((epochseconds, time, oset, rtt))
+                epochseconds = int((qdatetime-epoch).total_seconds())
+                points.append((epochseconds, qdatetime, offset, qduration))
                 #                for es, t, oset in points:
                 #                    abs_sum += abs(oset)
 
             # if the plot consists of all zeroes or has only 1 point, don't plot it
-            if all_low or len(points) < 100:
+            if all_low or len(points) < MIN_POINTS_TO_PLOT:
                 num_empty_hosts += 1
+                if args.debug:
+                    print("    ... skipping. all_low={}  len(points)={}".format(all_low,len(points)))
+                continue
+
+            
+            qpoints = []
+            zeroes = 0
+            total_queries = 0
+            num_points = len(points) 
+            for (qdate,qcount,ecount) in dbc.execute("select qdate,qcount,ecount from dated where ipaddr=%s", (ip,)):
+                total_queries += int(qcount)
+                zeroes -= int(ecount)
+                qpoints.append((qdate, qcount))
+            zeroes += total_queries - num_points
+            qdates, qtimes = zip(*sorted(qpoints))
+            ax2.plot(qdates, qtimes, "+", label="queries", color='g', zorder=0)  
+            num_hosts += 1
+            ipcount += 1
+            img_name = host.replace(".", "-")+str(ipcount)+".png"
+            total_points += num_points
+            epochtimes, times, offsets, rtts = zip(*sorted(points, key=operator.itemgetter(0)))
+            # calculate the features and record them as a caption on the html page
+            chars = graphgen.gen_chars(offsets)
+            f_query = qdates[0].strftime('%m/%d/%Y')
+            l_query = qdates[len(qdates)-1].strftime('%m/%d/%Y')
+            offset_mean = sum(offsets)/num_points
+            offset_std = (sum([(i-offset_mean)**2 for i in offsets])/num_points)**0.5
+            rtt_mean = sum(rtts)/num_points
+            rtt_std = (sum([(i-rtt_mean)**2 for i in rtts])/num_points)**0.5
+            stats_str = STATS_FMT % (ip, len(points), f_query, l_query, zeroes, 100*zeroes/total_queries, chars[1], 
+                                     offset_mean, offset_std, min(offsets), max(offsets), rtt_mean, rtt_std, min(rtts), max(rtts))
+            #                    plt.plot(times, offsets, "-x", label=ip)
+            o_pts, = ax1.plot(times, offsets, ".", color='b', label='offsets', zorder=10)
+            o_line, = ax1.plot(times, offsets, color='b', alpha=0.1)
+            r_pts, = ax1.plot(times, rtts, 'x', color='r', label='RTTs', zorder=5)
+            r_line, = ax1.plot(times, rtts, color='r', alpha=0.1)
+            ax1.set_title(host+": "+ip)
+            ax1.set_ylabel('offset (sec)')
+            ax2.set_ylabel('query count (per day)')
+            ax1.xaxis.set_major_formatter(mdt.DateFormatter('%m/%d/%Y'))
+            ax1.xaxis.set_major_locator(mdt.WeekdayLocator(byweekday=MO))
+            fig.autofmt_xdate(rotation=90)
+            ax1.legend(bbox_to_anchor=(1.05, 1), loc=2)
+            ax2.legend(bbox_to_anchor=(1.05, 1), loc=3)
+
+            plotsdir = os.path.join(outdir,HOSTPLOTS_SUBDIR)
+            fname     = os.path.join(plotsdir,img_name)
+            plt.savefig(fname, bbox_inches='tight')
+            if args.debug:
+                print("saved figure to {}".format(fname))
+            if not hyper_printed:
+                host_anchor = host.replace(".","_")
+                htmlfile.write("<tr>\n\t<td><a href='http://%s'>%s</a></td></tr>" % (host, host))
+                hyper_printed = True
+                htmlfile.write("<tr>\n\t<td><a href='#%s'><img id='%s' src='%s' alt='%s'></a></td>" %
+                               (host_anchor, host_anchor, HOSTPLOTS_SUBDIR+"/"+img_name, "timeseries plot " + str(num_hosts)))
             else:
-                c.execute("select qdate,qcount,ecount from dated where ipaddr='%s'" % (ip))
-                qpoints = []
-                zeroes = 0
-                total_queries = 0
-                num_points = len(points) 
-                for qdate,qcount,ecount in c.fetchall():
-                    total_queries += int(qcount)
-                    zeroes -= int(ecount)
-                    qpoints.append((qdate, qcount))
-                zeroes += total_queries - num_points
-                qdates, qtimes = zip(*sorted(qpoints))
-                ax2.plot(qdates, qtimes, "+", label="queries", color='g', zorder=0)  
-                num_hosts += 1
-                ipcount += 1
-                img_name = host.replace(".", "-")+str(ipcount)+".png"
-                total_points += num_points
-                epochtimes, times, offsets, rtts = zip(*sorted(points, key=operator.itemgetter(0)))
-                # calculate the features and record them as a caption on the html page
-                chars = graphgen.gen_chars(offsets)
-                f_query = qdates[0].strftime('%m/%d/%Y')
-                l_query = qdates[len(qdates)-1].strftime('%m/%d/%Y')
-                offset_mean = sum(offsets)/num_points
-                offset_std = (sum([(i-offset_mean)**2 for i in offsets])/num_points)**0.5
-                rtt_mean = sum(rtts)/num_points
-                rtt_std = (sum([(i-rtt_mean)**2 for i in rtts])/num_points)**0.5
-                stats_str = "%s (%d points)\n\tFirst query: %s\n\tLast query: %s\n\tzeroes: %d (%f%%)\n\tnum offset classes: %d\n\toffset stats:\n\t\tmean: %4f\n\t\tstd. dev.: %4f\n\t\tmin: %d\n\t\tmax: %d\n\tRTT stats:\n\t\tmean: %4f\n\t\tstd. dev.: %4f\n\t\tmin: %4f\n\t\tmax: %4f" % (ip, len(points), f_query, l_query, zeroes, 100*zeroes/total_queries, chars[1], offset_mean, offset_std, min(offsets), max(offsets), rtt_mean, rtt_std, min(rtts), max(rtts))
-                #                    plt.plot(times, offsets, "-x", label=ip)
-                o_pts, = ax1.plot(times, offsets, ".", color='b', label='offsets', zorder=10)
-                o_line, = ax1.plot(times, offsets, color='b', alpha=0.1)
-                r_pts, = ax1.plot(times, rtts, 'x', color='r', label='RTTs', zorder=5)
-                r_line, = ax1.plot(times, rtts, color='r', alpha=0.1)
-                ax1.set_title(host+": "+ip)
-                ax1.set_ylabel('offset (sec)')
-                ax2.set_ylabel('query count (per day)')
-                ax1.xaxis.set_major_formatter(mdt.DateFormatter('%m/%d/%Y'))
-                ax1.xaxis.set_major_locator(mdt.WeekdayLocator(byweekday=MO))
-                fig.autofmt_xdate(rotation=90)
-                ax1.legend(bbox_to_anchor=(1.05, 1), loc=2)
-                ax2.legend(bbox_to_anchor=(1.05, 1), loc=3)
-                plt.savefig(img_dir+img_name, bbox_inches='tight')
-                if not hyper_printed:
-                    host_anchor = host.replace(".","_")
-                    htmlfile.write("<tr>\n\t<td><a href='http://%s'>%s</a></td></tr>" % (host, host))
-                    hyper_printed = True
-                    htmlfile.write("<tr>\n\t<td><a href='#%s'><img id='%s' src='%s' alt='%s'></a></td>" % (host_anchor, host_anchor, img_dir.split("/")[-2:][0]+'/'+img_name, "timeseries plot " + str(num_hosts)))
-                else:
-                    htmlfile.write("<tr>\n\t<td><img src='%s' alt='%s'></td>" % (img_dir.split("/")[-2:][0]+'/'+img_name, "timeseries plot " + str(num_hosts)))
-                htmlfile.write("\t<td align='left'><pre>%s</pre></td>\n</tr>\n" % stats_str)
-    
+                htmlfile.write("<tr>\n\t<td><img src='%s' alt='%s'></td>" % (HOSTPLOTS_SUBDIR+"/"+img_name, "timeseries plot " + str(num_hosts)))
+            htmlfile.write("\t<td align='left'><pre>%s</pre></td>\n</tr>\n" % stats_str)
+
     htmlfile.write("</table>")
     htmlfile.write("</html>")
     htmlfile.close()
-    print ("Images created: " + str(num_hosts))
+    if args.debug:
+        print("Images created: {}   skipped: {}".format(num_hosts,num_empty_hosts))
 
 def page_by_ip(dbc, img_dir, html_dir):
-    c = dbc.cursor()
-    cmd = "select distinct ipaddr from times"
-    c.execute(cmd)
+    print("page_by_ip")
+    c = dbc.execute("select distinct ipaddr from times")
     ips = [row[0] for row in c.fetchall()]
     epoch = datetime.utcfromtimestamp(0)
     num_hosts, num_empty_hosts = 0, 0
@@ -171,7 +210,7 @@ def page_by_ip(dbc, img_dir, html_dir):
     for ip in ips:
         hosts = set()
         total_points = 0
-        c = dbc.execute("select distinct host from times where ipaddr='%s'" % ip)
+        c = dbc.execute("select distinct host from times where ipaddr=%s",(ip,))
         plt.clf()
         img_name = ip.replace(".", "-")+".png"
         for row in c.fetchall():
@@ -180,7 +219,7 @@ def page_by_ip(dbc, img_dir, html_dir):
         if len(hosts) != 0:
             for host in hosts:
                 abs_sum = 0
-                c = dbc.execute("select qdatetime, offset from times where host='%s' and ipaddr='%s'" % (host, ip))
+                c = dbc.execute("select qdatetime, offset from times where host=%s and ipaddr=%s", (host, ip))
                 points = []
                 for row in c.fetchall():
                     time, oset = row
@@ -229,13 +268,17 @@ if __name__ == "__main__":
     config = db.get_mysql_config(args.config)
     dbc    = db.mysql(config)
 
+    if args.debug:
+        dbc.debug = args.debug
+        print("debug mode")
+
     dbc.execute("set innodb_lock_wait_timeout=20")
     dbc.execute("set tx_isolation='READ-COMMITTED'")
     dbc.execute("set time_zone = '+00:00'")
 
     print("Starting at {}".format(time.asctime()))
     t0 = time.time()
-    page_by_host(dbc, os.path.join(args.outdir,'hostplots'), args.outdir)
-    page_by_ip(dbc, os.path.join(args.outdir,'ipplots'), args.outdir)
+    page_by_host(dbc, args.outdir)
+    #page_by_ip(dbc, os.path.join(args.outdir,'ipplots'), args.outdir)
     t1 = time.time()
-    print("Took {} seconds".format(t1-t0))
+    print("Took {:.2} seconds".format(t1-t0))
