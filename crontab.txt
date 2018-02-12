@@ -1,0 +1,4 @@
+TZ=EST5EDT
+*/30 * * * *	(cd timestudy;python3 cronrunner.py)
+@hourly (cd timestudy; bash hourly.bash)
+@daily  (cd timestudy; bash daily.bash)
