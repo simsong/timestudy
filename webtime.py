@@ -241,7 +241,7 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
 class QueryHostEngine:
     """This class implements is the web experiment engine. A collection of objects are meant to be called in a multiprocessing pool.
     Each object creates a connection to the SQL database. The queryhost(qhost) entry point performs a lookup for all IP addresses
-    Associated with the host.  Currently we do not try to use t he prefixes, but we could.
+    Associated with the host.  Currently we do not try to use the prefixes, but we could.
     Key methods:
     .__init__(db,debug)         - Initializes. db is the parameters for the database connection, but it doesn't connect until needed.
     .webtime(qhost,cursor=None) - get the webtime for every IP address for qhost; cursor is the MySQL cursor.
@@ -280,7 +280,7 @@ class QueryHostEngine:
 
         cmd += " WHERE id=%s"
         self.db.execute(cmd, (qlast,dated_id))
-
+
         if wt and (wt.should_record() or record_all):
             # Record wrong time!
             cursor = self.db.execute("INSERT INTO times (run,host,cname,ipaddr,isv6,seq,https,qdatetime,qduration,rdatetime,offset,response,redirect) "+

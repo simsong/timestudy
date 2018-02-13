@@ -1,10 +1,13 @@
 # Configure CENTOS as necessary for Simson and this package
 # Designed to be run on a clean VM
+# This script is idempotent -- you can rerun it as often as you wish.
+sudo chmod 644 /var/log/messages
+
 sudo yum -y install git         # you probably already did this
 sudo yum -y update
 sudo yum -y makecache fast 
 sudo yum -y install deltarpm yum-cron
-sudo yum -y install emacs
+sudo yum -y install emacs aspell aspell-en
 sudo yum -y install zlib zlib-static
 
 sudo yum -y install mariadb mariadb-server mariadb-devel mariadb-libs 

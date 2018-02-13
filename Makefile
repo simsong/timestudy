@@ -1,7 +1,9 @@
 install:
 	@echo "Installing html and CGI scripts; please verify differences in config.ini"
+	mkdir -p /var/www/html /var/www/cgi-bin/etc
 	install html/index.html		   /var/www/html/
-	install search.py db.py /var/www/cgi-bin/
+	install search.py db.py		   /var/www/cgi-bin/
+	install etc/*			   /var/www/cgi-bin/etc/
 	diff config.ini /var/www/cgi-bin/config.ini
 
 clean:
