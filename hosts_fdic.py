@@ -2,7 +2,7 @@
 
 # library for dealing with FDIC hosts
 
-TIMEOUT=5
+FNAME = "etc/INSTITUTIONS2.CSV"
 
 import csv
 
@@ -14,9 +14,14 @@ def url_to_hostname(s):
 
 def fdic_institutions_from_csv():
     """Return a list of USG hosts from the NIST setting"""
+    ret = ['time.gov','time.nist.gov'] # # internal controls
     with open('etc/FDIC_INSTITUTIONS2.CSV','r',encoding='latin1') as csvfile:
         reader = csv.DictReader(csvfile)
-        return list(filter(lambda a:len(a)>1,[url_to_hostname(row['WEBADDR']) for row in reader]))
+        for row in reader:
+            name = url_to_hostname(row['WEBADDR'])
+            if name:
+                ret.append(name)
+    return ret
 
 if __name__=="__main__":
     print(fdic_institutions_from_csv())
