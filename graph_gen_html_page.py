@@ -6,6 +6,8 @@
 # 2018-02-11 Cleaned up by simson
 
 CONFIG_INI = "config.ini"
+MIN_OFFSET = 3
+EPOCH = datetime.utcfromtimestamp(0)
 
 # plotting system:
 import matplotlib 
@@ -30,6 +32,9 @@ DEFAULT_TIME_ZONE='America/New_York'
 
 import db
 
+
+def now():
+    return datetime.now(pytz.timezone(DEFAULT_TIME_ZONE)).strftime("%Y-%m-%d %H:%M:%S %z")
 
 def reverse_host(host):
     """Give a hostname, reverse the order of the sections"""
@@ -127,89 +132,68 @@ def gen_chars(ts):
 
 
 
-HOSTPLOTS_SUBDIR='hostplots'
-def page_by_host(dbc, outdir):
-    if args.host:
-        hosts = [args.host]
-    else:
-        hosts = [row[0] for row in dbc.execute("SELECT DISTINCT host FROM times")]
-    if args.debug:
-        print("total hosts:",hosts)
-
-    hosts_r = sorted([reverse_host(s) for s in hosts])
-    epoch = datetime.utcfromtimestamp(0)
-    num_hosts, num_empty_hosts = 0, 0
-    htmlfile = open(os.path.join(outdir,"index.html"), 'w')
-    htmlcode = ""
-    htmlfile.write("<!DOCTYPE html>\n\n<html>\n")
-
-    show_tables(dbc)
-    show_tables(dbc)
-    show_tables(dbc)
-
-    if not args.nosizes:
-        tablesize, timessize, datedsize = get_sizes(dbc)
-        htmlcode += "<a href='byip.html'>Plots by IP</a>\n"
-        htmlcode += ("<p style='font-size:20px'>Rows in 'times': %s</p>\n" % timessize)
-        htmlcode += ("<p style='font-size:20px'>Rows in 'dated': %s</p>\n" % datedsize)
-        htmlcode += ("<p style='font-size:20px'>Database size: %s MB</p>\n" % tablesize)
+class Dated:
+    __slots__ = ['ipaddr', 'qdate', 'qcount', 'ecount']
+    def __init__(self,ipaddr,qdate,qcount,ecount)
+        self.ipaddr = ipaddr
+        self.qdate  = qdate
+        self.qcount = qcount
+        self.ecount = ecount
         
-    now = datetime.now(pytz.timezone(DEFAULT_TIME_ZONE)).strftime("%Y-%m-%d %H:%M:%S %z")
+class Times:
+    __slots__ = ['ipaddr', 'timet', 'offset', 'qduration']
+    def __init__(self,ipaddr,timet,offset,qduration):
+        self.ipaddr = ipaddr
+        self.timet  = timet
+        self.offset = offset
+        self.qduration = qduration
+        
 
-    htmlcode += ("<p style='font-size:20px'>Latest update: %s</p>\n" % datetime.strftime(datetime.now(), "%m-%d-%Y %H:%M:%S"))
-    htmlcode += "<table>\n"
-    htmlfile.write(htmlcode)
+class Plotter:
+    def __init__(self,dbc,host,ipplots,htmlfile):
+        self.dbc = dbc
+        self.host = host
+        self.ipplots = ipplots
+        self.htmlfile = htmlfile
+        self.dateds = []
+        self.points = []        # bad times
+        self.ips    = set()     # ipaddresses we've seen
 
-    for host_r in hosts_r:
-        host = '.'.join(list(reversed(host_r.split('.'))))
-        if args.debug:
-            print("DEBUG: host {}".format(host))
-        total_points = 0
+    def get_data(self):
+        # Get all of the bad reads at once, break into individual ipaddresses if needed
+        # 
+        for (ipaddr,qdatetime,offset,qduration) in dbc.execute("SELECT ipaddr, qdatetime, offset, qduration FROM times WHERE host=%s and abs(offset)>=%s",
+                                                           (host,MIN_OFFSET)):
+            timet = int((qdatetime-EPOCH).total_seconds())
+            self.points.append(Times(ipaddr,timet,offset,qduration))
+            self.ips.add(ipaddr)
 
-        ips = ipaddrs_for_host(dbc,host)
-        if args.debug:
-            print("  ipaddresses: ",ips)
-        if not ips:
-            continue            # no ipaddresses for this host!
+        for (ipaddr,qdate,qcount,ecount) in dbc.execute("select ipaddr,qdate,qcount,ecount from dated where host=%s", (host,)):
+            self.dated.append(Dated(ipaddr,qdate,qcount,ecount))
 
-        hyper_printed = False
-        stats_str = host+":\n"
-        # Add in a timeseries line for each IP address associated with the hostname
-        ipcount = 0
-        for ip in ips:
-            print("DEBUG    ip {}".format(ip))
-            plt.close('all')
-            fig, ax1 = plt.subplots()
-            ax2 = ax1.twinx()
-            abs_sum = 0
-            
-            points = []
-            all_low = True
-            for (qdatetime,offset,qduration) in dbc.execute("SELECT qdatetime, offset, qduration FROM times WHERE host=%s AND ipaddr=%s",(host, ip)):
-                offset = int(offset)
-                # if the offset value is between -2 and 2, assume it is zero
-                if abs(offset) >= 3:
-                    all_low = False
-                epochseconds = int((qdatetime-epoch).total_seconds())
-                points.append((epochseconds, qdatetime, offset, qduration))
-                #                for es, t, oset in points:
-                #                    abs_sum += abs(oset)
+    def total_queries(self):
+        return sum([d.qcount for d in self.dateds])
+        
+    def total_errors(self):
+        return sum([d.ecount for d in self.dateds])
 
-            # if the plot consists of all zeroes or has only 1 point, don't plot it
-            if all_low or len(points) < MIN_POINTS_TO_PLOT:
-                num_empty_hosts += 1
-                if args.debug:
-                    print("    ... skipping. all_low={}  len(points)={}".format(all_low,len(points)))
-                continue
+    def new_plot(self):
+        plt.close('all')
+        self.fig, self.ax1 = plt.subplots()
+        self.ax2 = ax1.twinx()
+
+    def make_plot(self):
+        first = True
+        for ip in self.ips:
+            # Create a new plot if this is first time through or if we are creating many plots
+            if first or self.manyplots:
+                plt.close('all')
+                first = False
 
             qpoints = []
             zeroes = 0
             total_queries = 0
             num_points = len(points) 
-            for (qdate,qcount,ecount) in dbc.execute("select qdate,qcount,ecount from dated where ipaddr=%s", (ip,)):
-                total_queries += int(qcount)
-                zeroes -= int(ecount)
-                qpoints.append((qdate, qcount))
             zeroes += total_queries - num_points
             qdates, qtimes = zip(*sorted(qpoints))
             ax2.plot(qdates, qtimes, "+", label="queries", color='g', zorder=0)  
@@ -241,7 +225,6 @@ def page_by_host(dbc, outdir):
             fig.autofmt_xdate(rotation=90)
             ax1.legend(bbox_to_anchor=(1.05, 1), loc=2)
             ax2.legend(bbox_to_anchor=(1.05, 1), loc=3)
-
             plotsdir = os.path.join(outdir,HOSTPLOTS_SUBDIR)
             fname     = os.path.join(plotsdir,img_name)
             t0 = time.time()
@@ -258,6 +241,47 @@ def page_by_host(dbc, outdir):
             else:
                 htmlfile.write("<tr>\n\t<td><img src='%s' alt='%s'></td>" % (HOSTPLOTS_SUBDIR+"/"+img_name, "timeseries plot " + str(num_hosts)))
             htmlfile.write("\t<td align='left'><pre>%s</pre></td>\n</tr>\n" % stats_str)
+
+    
+
+
+HOSTPLOTS_SUBDIR='hostplots'
+def page_by_host(dbc, outdir):
+    if args.host:
+        hosts = [args.host]
+    else:
+        hosts = [row[0] for row in dbc.execute("SELECT DISTINCT host FROM times")]
+    if args.debug:
+        print("total hosts:",hosts)
+
+    hosts_r = sorted([reverse_host(s) for s in hosts])
+    num_hosts, num_empty_hosts = 0, 0
+    htmlfile = open(os.path.join(outdir,"index.html"), 'w')
+    htmlcode = ""
+    htmlfile.write("<!DOCTYPE html>\n\n<html>\n")
+
+    show_tables(dbc)
+    show_tables(dbc)
+    show_tables(dbc)
+
+    if not args.nosizes:
+        tablesize, timessize, datedsize = get_sizes(dbc)
+        htmlcode += "<a href='byip.html'>Plots by IP</a>\n"
+        htmlcode += ("<p style='font-size:20px'>Rows in 'times': %s</p>\n" % timessize)
+        htmlcode += ("<p style='font-size:20px'>Rows in 'dated': %s</p>\n" % datedsize)
+        htmlcode += ("<p style='font-size:20px'>Database size: %s MB</p>\n" % tablesize)
+        
+    htmlcode += ("<p style='font-size:20px'>Latest update: {}</p>\n".format(now()))
+    htmlcode += "<table>\n"
+    htmlfile.write(htmlcode)
+
+    for host_r in hosts_r:
+        host = '.'.join(list(reversed(host_r.split('.'))))
+        if args.debug:
+            print("DEBUG: host {}".format(host))
+        total_points = 0
+
+        make_plot(dbc,host,ipaddrs=True)
 
     htmlfile.write("</table>")
     htmlfile.write("</html>")
