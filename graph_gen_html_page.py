@@ -156,16 +156,16 @@ class Plotter:
         self.ipplots = ipplots
         self.htmlfile = htmlfile
         self.dateds = []
-        self.points = []        # bad times
+        self.times = []        # bad times
         self.ips    = set()     # ipaddresses we've seen
 
     def get_data(self):
         # Get all of the bad reads at once, break into individual ipaddresses if needed
         # 
-        for (ipaddr,qdatetime,offset,qduration) in dbc.execute("SELECT ipaddr, qdatetime, offset, qduration FROM times WHERE host=%s and abs(offset)>=%s",
+        for (qdatetime,ipaddr,offset,qduration) in dbc.execute("SELECT qdatetime, ipaddr, offset, qduration FROM times WHERE host=%s and abs(offset)>=%s order by qdatetime",
                                                            (host,MIN_OFFSET)):
             timet = int((qdatetime-EPOCH).total_seconds())
-            self.points.append(Times(ipaddr,timet,offset,qduration))
+            self.times.append(Times(ipaddr,timet,offset,qduration))
             self.ips.add(ipaddr)
 
         for (ipaddr,qdate,qcount,ecount) in dbc.execute("select ipaddr,qdate,qcount,ecount from dated where host=%s", (host,)):
@@ -177,31 +177,52 @@ class Plotter:
     def total_errors(self):
         return sum([d.ecount for d in self.dateds])
 
-    def new_plot(self):
-        plt.close('all')
-        self.fig, self.ax1 = plt.subplots()
-        self.ax2 = ax1.twinx()
-
     def make_plot(self):
         first = True
-        for ip in self.ips:
-            # Create a new plot if this is first time through or if we are creating many plots
-            if first or self.manyplots:
-                plt.close('all')
-                first = False
+        # Right now, we are just going to plot all of the IP addresses
+        fig, ax1 = plt.subplots()
+        ax2 = ax1.twinx()
 
-            qpoints = []
+        # Plot the query count
+        qdates,qtimes = zip(*( (q.qdate,q.qcount) for q in self.dateds ) )
+        ax2.plot(qdates, qtimes, "+", label="queries", color='g', zorder=0)  
+        ax2.set_ylabel('query count (per day)')
+        ax2.legend(bbox_to_anchor=(1.05, 1), loc=3)
+
+        # Plot the RTTs
+        ax1.plot(times, rtts, 'x', color='r', label='RTTs', zorder=5)
+        qdatetimes, offsets, qdurations = zip(*( (t.timet, t.offset, t.qduration) for t in self.times))
+        ax1.plot(qdatetimes, offsets, ".", color='b', label='offsets', zorder=10) # draw the blue dots
+        ax1.plot(qdatetimes, offsets, color='b', alpha=0.1) # trace the line between the dots
+        ax1.set_title(host+": "+ip)
+        ax1.set_ylabel('offset (sec)')
+        ax1.xaxis.set_major_formatter(mdt.DateFormatter('%m/%d/%Y'))
+        ax1.xaxis.set_major_locator(mdt.WeekdayLocator(byweekday=MO))
+        
+        ax1.plot(qdatetimes, rtts, color='r', alpha=0.1) # draw the round trip times
+
+        fig.autofmt_xdate(rotation=90)
+        ax1.legend(bbox_to_anchor=(1.05, 1), loc=2)
+
+        # Now save the graph
+        plotsdir = os.path.join(outdir,HOSTPLOTS_SUBDIR)
+        fname     = os.path.join(plotsdir,img_name)
+        plt.savefig(fname, bbox_inches='tight')
+        if args.debug:
+            print("saved figure to {} in {:.4}s".format(fname,t1-t0))
+        plt.close('all')
+
+    def make_html(self):
+        # Output the HTML
+
             zeroes = 0
             total_queries = 0
             num_points = len(points) 
             zeroes += total_queries - num_points
-            qdates, qtimes = zip(*sorted(qpoints))
-            ax2.plot(qdates, qtimes, "+", label="queries", color='g', zorder=0)  
             num_hosts += 1
             ipcount += 1
             img_name = host.replace(".", "-")+str(ipcount)+".png"
             total_points += num_points
-            epochtimes, times, offsets, rtts = zip(*sorted(points, key=operator.itemgetter(0)))
             # calculate the features and record them as a caption on the html page
             chars = gen_chars(offsets)
             f_query = qdates[0].strftime('%m/%d/%Y')
@@ -213,25 +234,11 @@ class Plotter:
             stats_str = STATS_FMT % (ip, len(points), f_query, l_query, zeroes, 100*zeroes/total_queries, chars[1], 
                                      offset_mean, offset_std, min(offsets), max(offsets), rtt_mean, rtt_std, min(rtts), max(rtts))
             #                    plt.plot(times, offsets, "-x", label=ip)
-            o_pts, = ax1.plot(times, offsets, ".", color='b', label='offsets', zorder=10)
-            o_line, = ax1.plot(times, offsets, color='b', alpha=0.1)
-            r_pts, = ax1.plot(times, rtts, 'x', color='r', label='RTTs', zorder=5)
-            r_line, = ax1.plot(times, rtts, color='r', alpha=0.1)
-            ax1.set_title(host+": "+ip)
-            ax1.set_ylabel('offset (sec)')
-            ax2.set_ylabel('query count (per day)')
-            ax1.xaxis.set_major_formatter(mdt.DateFormatter('%m/%d/%Y'))
-            ax1.xaxis.set_major_locator(mdt.WeekdayLocator(byweekday=MO))
-            fig.autofmt_xdate(rotation=90)
-            ax1.legend(bbox_to_anchor=(1.05, 1), loc=2)
-            ax2.legend(bbox_to_anchor=(1.05, 1), loc=3)
-            plotsdir = os.path.join(outdir,HOSTPLOTS_SUBDIR)
-            fname     = os.path.join(plotsdir,img_name)
+            o_pts, = 
+            o_line, = 
+            r_pts, = 
             t0 = time.time()
-            plt.savefig(fname, bbox_inches='tight')
             t1 = time.time()
-            if args.debug:
-                print("saved figure to {} in {:.4}s".format(fname,t1-t0))
             if not hyper_printed:
                 host_anchor = host.replace(".","_")
                 htmlfile.write("<tr>\n\t<td><a href='http://%s'>%s</a></td></tr>" % (host, host))
