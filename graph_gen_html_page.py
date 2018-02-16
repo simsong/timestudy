@@ -30,6 +30,27 @@ DEFAULT_TIME_ZONE='America/New_York'
 DATE_FORMAT='%Y-%m-%d'
 EPOCH = datetime.utcfromtimestamp(0)
 
+# https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
+VISUALLY_DISTINCT_COLORS=[
+    #("Red", "#E6194B"),
+    #("Green", "#3CB44B"),
+    ("Blue", "#0082C8"),
+    ("Orange", "#F58231"),
+    ("Purple", "#911EB4"),
+    ("Cyan", "#46F0F0"),
+    ("Magenta", "#F032E6"),
+    ("Lime", "#D2F53C"),
+    ("Pink", "#FABEBE"),
+    ("Teal", "#008080"),
+    ("Lavender", "#E6BEFF"),
+    ("Brown", "#AA6E28"),
+    ("Beige", "#FFFAC8"),
+    ("Maroon", "#800000"),
+    ("Mint", "#AAFFC3"),
+    ("Olive", "#808000"),
+    ("Coral", "#FFD8B1"),
+    ("Navy", "#000080")]
+
 import db
 
 
@@ -113,6 +134,15 @@ def gen_chars(ts):
     return (zeroes/len(ts), len(offset_breaks)+1, avg_trend_len/len(ts), avg_trend)
 
 
+def ip_sort_function(ip):
+    # https://stackoverflow.com/questions/5619685/conversion-from-ip-string-to-integer-and-backward-in-python
+    import socket, struct
+    if "." in ip:
+        return struct.unpack("!I", socket.inet_aton(ip))[0]
+    _str = socket.inet_pton(socket.AF_INET6, ip)
+    a, b = struct.unpack('!2Q', _str)
+    return (a << 64) | b
+
 
 class Times:
     """Statistics for each measurement that is recorded"""
@@ -166,17 +196,31 @@ class Plotter:
         fig, ax1 = plt.subplots() # ax1 is in seconds; it tracks offsets and round-trip time
         ax2 = ax1.twinx()         # ax2 counts queries per day.
 
-        # Plot the RTTs
-        qdatetimes, offsets, qdurations = zip(*( (t.timet, t.offset, t.qduration) for t in self.times))
-        ax1.plot(qdatetimes, qdurations, 'x', color='r', label='RTTs', zorder=5)
-        ax1.plot(qdatetimes, offsets, ".", color='b', label='offsets', zorder=10) # draw the blue dots
-        ax1.plot(qdatetimes, offsets, color='b', alpha=0.1) # trace the line between the dots
+        # Create the graph axes
         ax1.set_title("{}: ".format(self.host))
         ax1.set_ylabel('offset (sec)')
         ax1.xaxis.set_major_formatter(mdt.DateFormatter(DATE_FORMAT))
         ax1.xaxis.set_major_locator(mdt.WeekdayLocator(byweekday=MO))
+
+        # Plot the RTTs
+        qdatetimes, qdurations = zip(*( (t.timet, t.qduration) for t in self.times))
+        ax1.plot(qdatetimes, qdurations, 'x', color='r', label='RTTs', zorder=5)
+        ax1.plot(qdatetimes, qdurations, color='r', alpha=0.5) # draw the round trip times
+
+        # Plot the time offsets
+        # We do a pass for each IP address, each in a different color
+        color_number = 0
+        for ip in sorted(set(self.ips),key=ip_sort_function):
+            color = VISUALLY_DISTINCT_COLORS[color_number % len(VISUALLY_DISTINCT_COLORS)][1]
+            color_number += 1
+            if color_number > 100:
+                color_number = 0
+            ip_qdatetimes, ip_offsets = zip(*( (t.timet, t.offset) for t in self.times if t.ipaddr==ip))
+            ax1.scatter(ip_qdatetimes, ip_offsets, s=2, color=color,
+                        label='{} offset ({} points)'.format(ip,len(ip_offsets)),
+                        zorder=10) # draw the blue dots
+            ax1.plot(ip_qdatetimes, ip_offsets, color=color, alpha=0.5) # trace the line between the dots
         
-        ax1.plot(qdatetimes, qdurations, color='r', alpha=0.1) # draw the round trip times
         ax1.legend(bbox_to_anchor=(1.05, 1), loc=2)
         fig.autofmt_xdate(rotation=45)
 
@@ -203,14 +247,15 @@ class Plotter:
         host_anchor = self.host.replace(".","_")
         htmlfile.write("<a name='{}'><tr><td><a href='http://{}'>{}</a></td> </tr>".
                        format(host_anchor,self.host, self.host))
-        htmlfile.write("<tr><td><a href='#{}'><img id='{}' src='{}' alt='{}'></a></td>".
+        htmlfile.write("<tr><td><a href='#{}'><img id='{}' src='{}' alt='{}'></a></td></tr>".
                        format(host_anchor, host_anchor, HOSTPLOTS_SUBDIR+"/"+self.img_name, "timeseries plot "))
-        htmlfile.write("<td align='left'><pre>")
-        for ip in self.ips:
-            htmlfile.write("{} : {:,} points\n".format(ip,self.ips[ip]))
-        htmlfile.write("First query: {}\n".format(self.dateds[0].qdate.strftime(DATE_FORMAT)))
-        htmlfile.write("Last query: {}\n".format(self.dateds[-1].qdate.strftime(DATE_FORMAT)))
-
+        htmlfile.write("<tr><td align='left'><pre>")
+        htmlfile.write(" • ".join(self.ips))
+        htmlfile.write("\n")
+        htmlfile.write("Query range: {} — {}\n".format(
+            self.dateds[0].qdate.strftime(DATE_FORMAT),
+            self.dateds[-1].qdate.strftime(DATE_FORMAT)))
+                       
         def stats(name,data):
             return "{}:\n\tmean: {:8.2f}\n\tstd. dev.: {:8.2f}\n\tmin: {}\n\tmax: {}\n".format(
                 name,
@@ -219,7 +264,7 @@ class Plotter:
                 min(data),
                 max(data))
 
-        htmlfile.write(stats("offset",[t.offset for t in self.times]))
+        htmlfile.write(stats("Drift:",[t.offset for t in self.times]))
         htmlfile.write(stats("RTT",[t.qduration for t in self.times]))
         htmlfile.write("</pre></td></tr>\n")
 
