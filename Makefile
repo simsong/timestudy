@@ -30,8 +30,8 @@ full:
 	chcon -R -t httpd_sys_rw_content_t /var/www/html/debug
 
 
-quick:
-	@echo Quick test of graph system
+debug:
+	@echo Debug test of graph system
 	mkdir -p plots/hostplots
 	python3 graph_gen_html_page.py --host=airnow.gov --debug --nosizes
 	cp -r plots /var/www/html/debug/
