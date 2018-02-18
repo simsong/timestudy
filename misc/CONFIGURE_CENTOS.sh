@@ -6,6 +6,7 @@ sudo chmod 644 /var/log/messages
 sudo yum -y install git         # you probably already did this
 sudo yum -y update
 sudo yum -y makecache fast 
+sudo yum -y install ntp
 sudo yum -y install deltarpm yum-cron
 sudo yum -y install emacs aspell aspell-en
 sudo yum -y install zlib zlib-static

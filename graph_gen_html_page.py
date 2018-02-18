@@ -173,6 +173,14 @@ class Plotter:
         self.dateds = []
         self.times  = []        # bad times
         self.ips    = defaultdict(int)     # ipaddresses we've seen
+        if args.verbose:
+            print("Plot({})".format(host))
+        self.img_name = self.host.replace(".", "-")+".png"
+
+    def png_name(self,outdir):
+        plotsdir = os.path.join(outdir,HOSTPLOTS_SUBDIR)
+        fname     = os.path.join(plotsdir,self.img_name)
+        return fname
 
     def get_data(self):
         # Get all of the bad reads at once, break into individual ipaddresses if needed
@@ -192,6 +200,9 @@ class Plotter:
         return sum([d.ecount for d in self.dateds])
 
     def make_plot(self,outdir):
+        if not self.times:
+            return
+
         # Prepare the axes where the plot will go
         fig, ax1 = plt.subplots() # ax1 is in seconds; it tracks offsets and round-trip time
         ax2 = ax1.twinx()         # ax2 counts queries per day.
@@ -231,11 +242,8 @@ class Plotter:
         ax2.legend(bbox_to_anchor=(1.05, 1), loc=3)
 
         # Now save the graph
-        self.img_name = self.host.replace(".", "-")+".png"
-        plotsdir = os.path.join(outdir,HOSTPLOTS_SUBDIR)
-        fname     = os.path.join(plotsdir,self.img_name)
         t0 = time.time()
-        plt.savefig(fname, bbox_inches='tight')
+        plt.savefig(self.png_name(outdir), bbox_inches='tight')
         t1 = time.time()
         if args.debug:
             print("saved figure to {} in {:.4}s".format(fname,t1-t0))
@@ -257,12 +265,16 @@ class Plotter:
             self.dateds[-1].qdate.strftime(DATE_FORMAT)))
                        
         def stats(name,data):
-            return "{}:\n\tmean: {:8.2f}\n\tstd. dev.: {:8.2f}\n\tmin: {}\n\tmax: {}\n".format(
-                name,
-                statistics.mean(data),
-                statistics.stdev(data),
-                min(data),
-                max(data))
+            try:
+                ret = "{}:\n\tmean: {:8.2f}\n\tstd. dev.: {:8.2f}\n\tmin: {}\n\tmax: {}\n".format(
+                    name,
+                    statistics.mean(data),
+                    statistics.stdev(data),
+                    min(data),
+                    max(data))
+            except statistics.StatisticsError:
+                ret = "{}:  no statistics".format(name)
+            return ret
 
         htmlfile.write(stats("Drift:",[t.offset for t in self.times]))
         htmlfile.write(stats("RTT",[t.qduration for t in self.times]))
@@ -276,8 +288,8 @@ def page_by_host(dbc, outdir):
         hosts = [args.host]
     else:
         hosts = [row[0] for row in dbc.execute("SELECT DISTINCT host FROM times")]
-    if args.debug:
-        print("total hosts:",hosts)
+        if args.debug:
+            print("total hosts:",len(hosts))
 
     hosts_reversed = sorted([reverse_host(s) for s in hosts])
     num_hosts, num_empty_hosts = 0, 0
@@ -301,8 +313,11 @@ def page_by_host(dbc, outdir):
 
         p = Plotter(dbc,host)
         p.get_data()
-        p.make_plot(outdir)
-        p.make_html(htmlfile)
+        png_name = p.png_name(outdir)
+        if not os.path.exists(png_name):
+            p.make_plot(outdir)
+        if os.path.exists(png_name):
+            p.make_html(htmlfile)
 
     htmlfile.write("</table>")
     htmlfile.write("</html>")

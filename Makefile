@@ -1,3 +1,7 @@
+anything:
+	@echo choose a target:
+	@grep '$$[a-zA-Z]' Makefile | sed s/://
+
 install:
 	@echo "Installing html and CGI scripts; please verify differences in config.ini"
 	mkdir -p /var/www/html /var/www/cgi-bin/etc
@@ -21,13 +25,14 @@ backup:
 	@python3 db.py --dumpdb | gzip -9 >  database.sql.gz
 
 
-full:
+pub:
 	@echo Make and publish all the graphs
-	python3 graph_gen_html_page.py 
-	mkdir -p /var/www/html/debug/hostplots
-	mv -f plots/*.html /var/www/html/debug/
-	mv -f plots/hostplots/*.png /var/www/html/debug/hostplots
-	chcon -R -t httpd_sys_rw_content_t /var/www/html/debug
+	python3 graph_gen_html_page.py  --verbose
+	sudo mkdir -p /var/www/html/plots/hostplots
+	sudo chown -R `whoami` /var/www/html/plots
+	mv -f plots/*.html /var/www/html/plots/
+	mv -f plots/hostplots/*.png /var/www/html/plots/hostplots
+	sudo chcon -R -t httpd_sys_rw_content_t /var/www/html/plots
 
 
 debug:
