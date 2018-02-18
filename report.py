@@ -30,7 +30,7 @@ def gen_report(dbc,smin,smax,desc):
     print("Negative time delta means that the remote host thinks that it is in the past.")
     print("Hosts where clocks are off {}: {}".format(desc,len(hosts)))
     print(cmd)
-    print("time: {:.1f} sec".format(dbc.lasttime))
+    print("time: {:.1f} sec".format(dbc.execute_last))
     print("\n")
     if len(hosts)==MAX_HOST_REPORT:
         print("(Only {} hosts are reported)".format(MAX_HOST_REPORT))

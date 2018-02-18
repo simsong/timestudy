@@ -83,6 +83,8 @@ class mysql:
         self.mysql_max_executes = DEFAULT_MAX_EXECUTES
         self.debug         = config.getint('mysql','debug')
         self.null          = config.getboolean('mysql','null', fallback=False) #  are we using the null driver?
+        self.execute_total  = 0  # running total of how long each execute took
+        self.execute_last = 0
 
     def connect(self):
         if self.null: return
@@ -159,9 +161,10 @@ class mysql:
             print("args=",args)
             raise e
         self.t1 = time.time()
-        self.lasttime = self.t1-self.t0
+        self.execute_last = self.t1-self.t0
+        self.execute_total += self.execute_last
         if self.debug:
-            print("t={:.3f}".format(self.lasttime))
+            print("t={:.3f}".format(self.execute_last))
         return cursor
     
     def select1(self,cmd,args=None):
