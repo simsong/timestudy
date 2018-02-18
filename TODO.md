@@ -1,5 +1,10 @@
+Database Enhancement
+* Record the CNAME of every query in the times database.
+* Transparent databsae upgrades? We probably don't have enough out there yet. 
+
 Real time reports:
 Proposal is for a CGI script that displays a form if called without arguments, otherwise just performs the search.
+
 
 Specify:
 * Start time
