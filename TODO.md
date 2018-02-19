@@ -1,9 +1,21 @@
+
 Database Enhancement
 * Record the CNAME of every query in the times database.
+  getipbyhostname_ex
 * Transparent databsae upgrades? We probably don't have enough out there yet. 
+
+Reporing Enhancement:
+* So one suggestion was if number of IPs is > N, we join series by CNAME.  From what I can see that will collapse all couldfront lists to one CNAME.
+
+Sampling and Recording Enahncement:
+* One per day, unless CONDITION is met.
+* CONDITION = an errornous time within the past 7 days
+* If CONDITION is met, record all samples (good and bad)
 
 Real time reports:
 Proposal is for a CGI script that displays a form if called without arguments, otherwise just performs the search.
+
+
 
 
 Specify:
