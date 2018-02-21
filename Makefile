@@ -18,8 +18,8 @@ top-100m.csv:
 	unzip top-1m.csv.zip
 	/bin/rm -f top-1m.csv.zip
 
-schema.sql: Makefile webtime.py
-	python3 db.py --dumpschema | sed 's/ AUTO_INCREMENT=[0-9]*//g' > schema.sql
+schema.sql: Makefile webtime.py db.py
+	python3 db.py --config config_dreamhost.ini --dumpschema | sed 's/ AUTO_INCREMENT=[0-9]*//g' > schema.sql
 
 backup:
 	@python3 db.py --dumpdb | gzip -9 >  database.sql.gz

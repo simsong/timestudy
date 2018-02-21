@@ -1,8 +1,8 @@
 -- MySQL dump 10.14  Distrib 5.5.56-MariaDB, for Linux (x86_64)
 --
--- Host: localhost    Database: timedb
+-- Host: mysql.simson.net    Database: timedb_gov
 -- ------------------------------------------------------
--- Server version	5.5.56-MariaDB
+-- Server version	5.6.34-log
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -24,6 +24,7 @@ DROP TABLE IF EXISTS `dated`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `dated` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `modified` timestamp NULL DEFAULT NULL,
   `host` varchar(255) DEFAULT NULL,
   `ipaddr` varchar(39) DEFAULT NULL,
   `isv6` int(11) DEFAULT NULL,
@@ -111,8 +112,12 @@ DROP TABLE IF EXISTS `log`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `log` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `host` varchar(128) DEFAULT NULL,
   `pid` int(11) DEFAULT NULL,
   `modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `cpu` float DEFAULT NULL,
+  `memtotal` int(11) DEFAULT NULL,
+  `memfree` int(11) DEFAULT NULL,
   `value` mediumtext,
   `level` enum('EMERG','ALERT','CRIT','ERR','WARNING','NOTICE','INFO','DEBUG') NOT NULL DEFAULT 'INFO',
   PRIMARY KEY (`id`),
@@ -174,4 +179,4 @@ CREATE TABLE `times` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-02-17  2:43:54
+-- Dump completed on 2018-02-21 16:29:22

@@ -3,36 +3,38 @@ import py.test
 import db
 from db import SCHEMA
 
+# Set this to be a config.ini that has a working "testdb"
+CONFIG_INI_TEST="config_test.ini"
+
+def get_test_database():
+    assert os.path.exists(CONFIG_INI_TEST)
+    config = db.get_mysql_config(CONFIG_INI_TEST)
+    assert config.get('mysql','db') != config.get('mysql','testdb')
+    dbc = db.mysql(config)
+    dbc.connect(db=config.get('mysql','testdb'))
+    return dbc
+
 def test_create_schema():
     """Test creating a database and upgrading it and killing it"""
-    assert os.path.exists("config.ini")
-    config = db.get_mysql_config("config.ini")
-    testdb = config.get('mysql','testdb')
-
-    assert config.get('mysql','db') != testdb # make sure that a different testdb was set
-
-    # change the db to the test db
-    config.set('mysql','db',testdb)
-
-    mdb    = db.mysql( config )
-    mdb.connect()
+    config = db.get_mysql_config(CONFIG_INI_TEST)
+    dbc = get_test_database()
 
     # 
     # Make sure that we are in the correct database
     #
-    assert mdb.select1("select database();")[0]==testdb
+    assert dbc.select1("select database();")[0]==config.get('mysql','testdb')
 
     # Make sure that log and metadata tables are not present
-    mdb.execute("DROP TABLE IF EXISTS `metadata`")
-    mdb.execute("DROP TABLE IF EXISTS `log`")
+    dbc.execute("DROP TABLE IF EXISTS `metadata`")
+    dbc.execute("DROP TABLE IF EXISTS `log`")
 
     # 
     # Send the schema
     #
-    mdb.send_schema(db.file_contents(SCHEMA))
+    dbc.send_schema(db.file_contents(SCHEMA))
 
-    assert mdb.table_exists('dated')==True
-    assert mdb.table_exists('xxx')==False
+    assert dbc.table_exists('dated')==True
+    assert dbc.table_exists('xxx')==False
 
 def test_get_mysql_driver():
     assert db.get_mysql_driver() != None
@@ -43,20 +45,15 @@ def test_get_mysql_config():
     assert config['mysql']['db'] == db.DEFAULT_MYSQL_DB
 
 def test_mysql():
-    mdb    = db.mysql( db.get_mysql_config("config.ini") )
-    mdb.connect()
-    ver = mdb.mysql_version()
+    dbc = get_test_database()
+    ver = dbc.mysql_version()
     assert type(ver)==str
     assert ver[0]>='5'
-    assert 'DB' in ver
     
 def test_log():
-    mdb    = db.mysql( db.get_mysql_config("config.ini") )
-    mdb.connect()
-    id = mdb.log("This is PID {}".format(os.getpid()))
+    dbc = get_test_database()
+    id = dbc.log("This is PID {}".format(os.getpid()))
     assert id>0
-    
-    
 
 if __name__=="__main__":
     test_create_schema()

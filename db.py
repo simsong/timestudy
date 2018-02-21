@@ -4,7 +4,11 @@
 # db.py:
 # Code for working with the MySQL database
 
-import os,sys,subprocess,time
+import os
+import sys
+import subprocess
+import time
+import socket
 if sys.version < '3':
     raise RuntimeError("Requires Python 3")
 
@@ -24,6 +28,13 @@ USE_PYMYSQL=False               # ran into error when rowid went larger than 655
 
 def file_contents(fname):
     return open(fname,"r").read()
+
+def loadavg():
+    return float(open("/proc/loadavg").read().split(" ",maxsplit=1)[0])
+
+def meminfo():
+    data = open("/proc/meminfo","r").read().split("\n")
+    return dict([(e[0],int(e[1].strip().split(' ')[0])) for e in [line.split(":") for line in data if ":" in line]])
 
 def get_mysql_driver():
     """Return any MySQL driver that's installed"""
@@ -66,11 +77,13 @@ def get_mysql_config(fname=None):
         config.read(fname)
     return config
 
-
 def mysql_dump_stdout(config,opts):
     """Using the config, dump MySQL schema"""
-    mc = config["mysql"]
-    cmd = ['mysqldump','-h',mc['host'],'-u',mc['user'],'-p' + mc['passwd'], opts,mc['db']]
+    print('config=',config,'opts=',opts,file=sys.stderr)
+    user = config["mysql"]['user']
+    password = config["mysql"]['passwd']
+    print("password:",password,file=sys.stderr)
+    cmd = ['mysqldump','-h',config['mysql']['host'],'-u',user,'--pass=' + password, opts, config['mysql']['db']]
     sys.stderr.write(" ".join(cmd)+"\n")
     subprocess.call(cmd)
 
@@ -84,15 +97,17 @@ class mysql:
         self.debug         = config.getint('mysql','debug')
         self.null          = config.getboolean('mysql','null', fallback=False) #  are we using the null driver?
 
-    def connect(self):
+    def connect(self,db=None):
         if self.null: return
         self.mysql = get_mysql_driver()
+        if db==None:
+            db = self.config.get("mysql","db")
         try:
             self.conn = self.mysql.connect(host=self.config.get("mysql","host"),
                                            port=self.config.getint("mysql",'port'),
                                            user=self.config.get("mysql","user"),
                                            passwd=self.config.get("mysql","passwd"),
-                                           db=self.config.get("mysql","db"))
+                                           db=db)
             self.conn.cursor().execute("set innodb_lock_wait_timeout=20")
             self.conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")
             self.conn.cursor().execute("SET time_zone = '+00:00'")
@@ -177,7 +192,9 @@ class mysql:
 
     def log(self,msg,level='INFO'):
         """Save msg in the log table, return the log id"""
-        c = self.execute("INSERT INTO log (pid,level,value) VALUES (%s,%s,%s)",(os.getpid(),level,msg))
+        mem = meminfo()
+        c = self.execute("INSERT INTO log (host,pid,level,value,cpu,memtotal,memfree) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                         (socket.gethostname(),os.getpid(),level,msg,loadavg(),mem['MemTotal'],mem['MemFree']))
         self.conn.commit()
         return c.lastrowid
 
@@ -217,7 +234,7 @@ if __name__=="__main__":
     import sys
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--config',help='specify config file',default=DEFAULT_CONFIG)
+    parser.add_argument('--config',help='specify config file',required=True)
     parser.add_argument("--dumpschema",action='store_true',help="dump schema to stdout")
     parser.add_argument("--dumpdb",action='store_true',help="dump schema to stdout")
 
