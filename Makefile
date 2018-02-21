@@ -27,6 +27,7 @@ backup:
 
 pub:
 	@echo Make and publish all the graphs
+	mkdir -p plots/hostplots
 	python3 graph_gen_html_page.py  --verbose
 	sudo mkdir -p /var/www/html/plots/hostplots
 	sudo chown -R `whoami` /var/www/html/plots

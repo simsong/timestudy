@@ -185,6 +185,7 @@ class Plotter:
     def get_data(self):
         # Get all of the bad reads at once, break into individual ipaddresses if needed
         # 
+        t0 = time.time()
         cmd = "SELECT qdatetime, ipaddr, offset, qduration FROM times WHERE host=%s and abs(offset)>=%s GROUP BY qdatetime ORDER BY qdatetime"
         for (qdatetime, ipaddr, offset, qduration) in dbc.execute(cmd, (self.host,MIN_OFFSET)):
             self.times.append( Times(ipaddr, qdatetime, offset, qduration) )
@@ -192,6 +193,9 @@ class Plotter:
 
         for (ipaddr, qdate, qcount, ecount) in dbc.execute("select ipaddr,qdate,qcount,ecount from dated where host=%s GROUP BY qdate ORDER BY qdate", (self.host,)):
             self.dateds.append( Dated(ipaddr, qdate, qcount, ecount) )
+        t1 = time.time()
+        if args.verbose:
+            print("  get_data={:.4}s".format(t1-t0))
 
     def total_queries(self):
         return sum([d.qcount for d in self.dateds])
@@ -202,6 +206,8 @@ class Plotter:
     def make_plot(self,outdir):
         if not self.times:
             return
+
+        t0 = time.time()
 
         # Prepare the axes where the plot will go
         fig, ax1 = plt.subplots() # ax1 is in seconds; it tracks offsets and round-trip time
@@ -242,11 +248,11 @@ class Plotter:
         ax2.legend(bbox_to_anchor=(1.05, 1), loc=3)
 
         # Now save the graph
-        t0 = time.time()
-        plt.savefig(self.png_name(outdir), bbox_inches='tight')
+        fname = self.png_name(outdir)
+        plt.savefig(fname, bbox_inches='tight')
         t1 = time.time()
-        if args.debug:
-            print("saved figure to {} in {:.4}s".format(fname,t1-t0))
+        if args.verbose:
+            print("  saved figure to {} in {:.4}s".format(fname,t1-t0))
         plt.close('all')
 
     def make_html(self,htmlfile):
@@ -309,15 +315,20 @@ def page_by_host(dbc, outdir):
     htmlfile.write(htmlcode)
 
     for host_reversed in hosts_reversed:
+        t0 = time.time()
+        print("host_reversed=",host_reversed,"t=",time.time())
         host = '.'.join(list(reversed(host_reversed.split('.'))))
 
         p = Plotter(dbc,host)
+        print("   made Plotter. tdelta=",time.time()-t0)
         p.get_data()
+        print("   got data. tdelta=",time.time()-t0)
         png_name = p.png_name(outdir)
         if not os.path.exists(png_name):
             p.make_plot(outdir)
         if os.path.exists(png_name):
             p.make_html(htmlfile)
+        print("   done. tdelta=",time.time()-t0)
 
     htmlfile.write("</table>")
     htmlfile.write("</html>")
