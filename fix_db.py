@@ -17,8 +17,6 @@ import struct
 import json
 import ipaddress
 
-CONFIG_INI = "config.ini"
-
 def fix_ipv6(addr):
     _str = socket.inet_pton(socket.AF_INET6, addr)
     a, b = struct.unpack('!2Q', _str)
@@ -32,7 +30,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--verbose",action="store_true",help="Be more verbose")
-    parser.add_argument("--config",help="config file",default=CONFIG_INI)
+    parser.add_argument("--config",help="config file",required=True)
     parser.add_argument("--db",action="store_true",help="When running interactive, write to the database")
 
     args = parser.parse_args()

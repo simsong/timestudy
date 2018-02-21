@@ -11,8 +11,6 @@ import db
 import os
 import time
 
-CONFIG_INI="config.ini"
-
 def log_search_host(dbc,host):
     if host=="":
         yield list()

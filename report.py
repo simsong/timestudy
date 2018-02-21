@@ -14,7 +14,6 @@ import subprocess
 import math
 import hosts_usg
 
-CONFIG_INI = "config.ini"
 MAX_HOST_REPORT = 10
 MAX_IP_REPORT = 10
 

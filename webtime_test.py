@@ -1,6 +1,7 @@
 import py.test
 from webtime import *
 import db
+import db_test
 
 GOOD_TIME = 'time.glb.nist.gov' # for a good time, call...
 GOOD_TIME_IP = '132.163.4.22'
@@ -8,6 +9,8 @@ GOOD_TIME_CORRECT = 5           # our clock should be within this many seconds o
 
 KNOWN_REDIR_SOURCE = 'lis.gov'  # We know that lis.gov redirects to www.list.gov
 KNOWN_REDIR_DEST   = 'www.lis.gov'   # Known not to be in the source files
+
+CONFIG_INI_TEST = "config_test.ini"
 
 def test_s_to_hms():
     assert s_to_hms(0)==" 00:00:00"
@@ -81,11 +84,14 @@ def test_WebTime():
 
 
 def test_WebTimeExp():
-    w = WebTimeExp(qhost=GOOD_TIME,ipaddr=GOOD_TIME_IP,protocol='http',config=db.get_mysql_config("config.ini"),cname='',db=None)
+    w = WebTimeExp(qhost=GOOD_TIME,ipaddr=GOOD_TIME_IP,protocol='http',
+                   config=db.get_mysql_config(CONFIG_INI_TEST),cname='',db=None)
     assert w.offset() < datetime.timedelta(seconds=GOOD_TIME_CORRECT)       # we should be off by less than 5 seconds
 
 def test_WebTimeExp_redirect():
-    w = WebTimeExp(qhost='nist.gov',protocol='https',ipaddr='50.17.216.216',config=db.get_mysql_config("config.ini"),db=None,cname='')
+    w = WebTimeExp(qhost='nist.gov',protocol='https',
+                   ipaddr='50.17.216.216',
+                   config=db.get_mysql_config(CONFIG_INI_TEST),db=None,cname='')
     assert w.rcode in [301,302,303]
     assert w.redirect=='www.nist.gov'
 
@@ -96,7 +102,7 @@ def test_get_ip_addrs():
 
 def test_QueryHostEngine():
     import time,datetime
-    config = db.get_mysql_config("config.ini")
+    config = db.get_mysql_config(CONFIG_INI_TEST)
     mdb    = db.mysql(config)
     qhe    = QueryHostEngine(config)
     assert(type(qhe.db) == type(mdb))
@@ -132,7 +138,7 @@ def test_QueryHostEngine():
 
 def test_QueryHostEngine_Redirect():
     import time,datetime
-    config = db.get_mysql_config("config.ini")
+    config = db.get_mysql_config(CONFIG_INI_TEST)
     mdb    = db.mysql(config)
     qhe    = QueryHostEngine(config)
 
@@ -142,9 +148,9 @@ def test_QueryHostEngine_Redirect():
     qhe.db.debug = 1
 
     qhe.queryhost(KNOWN_REDIR_SOURCE,force_record=True)
-    # Now make sure that there was a query done on KNOWN_REDIR_DEST within the past 5 seconds
+    # Now make sure that there was a query done on KNOWN_REDIR_DEST within the past 10 seconds
     (id,diff)  = mdb.select1("select id,NOW()-qdatetime from times where host=%s order by qdatetime desc limit 1",(KNOWN_REDIR_DEST,))
-    assert diff<5
+    assert diff<10
 
 
 SOME_HOSTS=['host{}'.format(i) for i in range(1,100)] # a lot of hosts
@@ -168,5 +174,5 @@ def test_get_hosts():
     assert sorted(SOME_HOSTS) == sorted(rhosts)
 
     # test the one that's there
-    hosts = get_hosts(db.get_mysql_config(CONFIG_INI))
+    hosts = get_hosts(db.get_mysql_config(db_test.CONFIG_INI_TEST))
     assert 100 < len(hosts) < 100000

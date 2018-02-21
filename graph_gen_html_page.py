@@ -5,7 +5,6 @@
 # 2017-06-16 Created by anj1
 # 2018-02-11 Cleaned up by simson
 
-CONFIG_INI = "config.ini"
 MIN_OFFSET = 3
 
 # plotting system:

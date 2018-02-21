@@ -9,9 +9,13 @@ CONFIG_INI_TEST="config_test.ini"
 def get_test_database():
     assert os.path.exists(CONFIG_INI_TEST)
     config = db.get_mysql_config(CONFIG_INI_TEST)
-    assert config.get('mysql','db') != config.get('mysql','testdb')
+    # Safety -- make sure that the test database is different from the real database, or else
+    # that the word 'test' appears in the tst database name
+    dbname = config.get('mysql','db')
+    testdbname = config.get('mysql','testdb')
+    assert ('test' in testdbname) or (dbname != testdbname)
     dbc = db.mysql(config)
-    dbc.connect(db=config.get('mysql','testdb'))
+    dbc.connect(db=testdbname)
     return dbc
 
 def test_create_schema():

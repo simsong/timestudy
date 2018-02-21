@@ -17,7 +17,6 @@ import struct
 import json
 
 MIN_TIME = 3.0                          # Don't record more off than this
-CONFIG_INI = "config.ini"
 DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
 DEFAULT_TIMEOUT = 5                     # default timeout, in seconds
 ALWAYS_RECORD_DOMAINS = set(['time.gov','time.nist.gov','time.glb.nist.gov','ntp1.glb.nist.gov'])
