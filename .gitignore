@@ -68,3 +68,8 @@ top-1m.csv.zip
 database.sql
 plots/
 *.out
+#*
+*password*
+*.ini
+.pytest_cache
+#*

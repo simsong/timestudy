@@ -37,6 +37,9 @@ else
   # sudo yum -y install python36u
 fi
 
+# Fix permissions
+sudo chmod ugo+r /var/log/messages
+
 # Fix Python3 release
 sudo pip3 install --upgrade pip
 sudo pip3 install matplotlib pytest bs4 lxml dnspython pytest requests
