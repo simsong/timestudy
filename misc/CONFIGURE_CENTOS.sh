@@ -42,7 +42,7 @@ sudo chmod ugo+r /var/log/messages
 
 # Fix Python3 release
 sudo pip3 install --upgrade pip
-sudo pip3 install matplotlib pytest bs4 lxml dnspython pytest requests
+sudo pip3 install matplotlib pytest bs4 lxml dnspython pytest requests tabulate
   # https://stackoverflow.com/questions/46215390/unable-to-find-protobuf-include-directory-when-i-use-pip-install-mysql-connec
 sudo pip3 install mysql-connector==2.1.4
 
