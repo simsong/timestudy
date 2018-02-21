@@ -13,7 +13,6 @@ if sys.version < '3':
     raise RuntimeError("Requires Python 3")
 
 
-DEFAULT_CONFIG="config.ini"
 DEFAULT_MYSQL_DB   = 'timedb'
 DEFAULT_MYSQL_PORT = 3306
 DEFAULT_MAX_EXECUTES = 0     # reconnect after 

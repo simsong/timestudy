@@ -68,7 +68,7 @@ if __name__=="__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
-    parser.add_argument("--config",help="config file",default=CONFIG_INI)
+    parser.add_argument("--config",help="config file",required=True)
     parser.add_argument("--timeout",type=float,default=3,help="HTTP connect timeout")
     parser.add_argument("--limit",type=int,help="Limit to LIMIT oldest hosts",default=100000)
     parser.add_argument("--info",help='info on this host')

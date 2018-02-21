@@ -22,7 +22,6 @@ import db
 import fcntl
 
 MIN_TIME = 1.0                # Resolution of remote websites
-CONFIG_INI = "config.ini"
 DEFAULT_DELAY = 300
 
 def getlock(fname):
@@ -56,7 +55,7 @@ if __name__=="__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true")
-    parser.add_argument("--config",help="config file",default=CONFIG_INI)
+    parser.add_argument("--config",help="config file",required=True)
 
     args   = parser.parse_args()
     config = db.get_mysql_config(args.config)
@@ -74,7 +73,7 @@ if __name__=="__main__":
     # the results in w to avoid reundent connections to the MySQL
     # server.
     
-    config = db.get_mysql_config("config.ini")
+    config = db.get_mysql_config(args.config)
     d = db.mysql(config)
     d.connect()
     ver = d.select1("select version();")[0]

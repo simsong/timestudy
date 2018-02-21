@@ -26,6 +26,6 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--verbose",action="store_true",help="output to STDOUT")
-    parser.add_argument("--config",help="config file",default=CONFIG_INI)
+    parser.add_argument("--config",help="config file",required=True)
     parser.add_argument("--host",help="Specify a host")
     parser.add_argument("--usg",action="store_true",help="Only USG")
