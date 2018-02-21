@@ -12,14 +12,19 @@ import sys
 if sys.version < '3':
     raise RuntimeError("Requires Python 3")
 
-import os
+import argparse
+import configparser
 import csv
-import time,datetime
-import subprocess
-import sys
-import math
 import db
 import fcntl
+import logging
+import logging.handlers
+import math
+import os
+import subprocess
+import sys
+import time
+import datetime
 
 MIN_TIME = 1.0                # Resolution of remote websites
 DEFAULT_DELAY = 300
@@ -36,20 +41,12 @@ def getlock(fname):
 
 def logger_info(msg):
     """Log something to the INFO facility. Doesn't cache open connection"""
-
-    import logging
-    import logging.handlers
-
     my_logger = logging.getLogger(__file__)
     my_logger.setLevel(logging.INFO)
     my_logger.addHandler(logging.handlers.SysLogHandler(address = '/dev/log'))
     my_logger.info(msg)
 
 if __name__=="__main__":
-    import argparse
-    import configparser
-    import fcntl
-    import sys
 
     logger_info('{} PID {} Started'.format(__file__,os.getpid()))
 
@@ -63,6 +60,7 @@ if __name__=="__main__":
     # Running from cron. Make sure only one of us is running. If another is running, exit
     try:
         fd = getlock(__file__)
+        logger_info('{} PID {} acquired lock'.format(__file__,os.getpid()))
     except RuntimeError as e:
         logger_info('{} PID {} could not acquire lock'.format(__file__,os.getpid()))
         print("{}: Could not acquire lock".format(__file__))
@@ -73,14 +71,12 @@ if __name__=="__main__":
     # the results in w to avoid reundent connections to the MySQL
     # server.
     
-    config = db.get_mysql_config(args.config)
-    d = db.mysql(config)
+    d = db.mysql( db.get_mysql_config(args.config) )
     d.connect()
     ver = d.select1("select version();")[0]
     assert type(ver)==str and ver[0]>='5'
     d.close()
     
-
     t0 = time.time()
     res = subprocess.call([sys.executable,'webtime.py','--config',args.config])
     t1 = time.time()

@@ -15,6 +15,7 @@ import configparser
 import socket
 import struct
 import json
+from cronrunner import logger_info
 
 MIN_TIME = 3.0                          # Don't record more off than this
 DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
@@ -406,6 +407,8 @@ if __name__=="__main__":
     import argparse
     import sys
 
+    logger_info('{} PID {} Started'.format(__file__,os.getpid()))
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--debug",action="store_true",help="write results to STDOUT")
     parser.add_argument("--verbose",action="store_true",help="Be more verbose")
@@ -476,3 +479,4 @@ if __name__=="__main__":
               .format(host_count,s_to_hms(time_total),host_count/time_total,float(qcount1-qcount0)/time_total))
 
     dbc.log("run {} finished".format(runid))
+    logger_info('{} PID {} Completed took={:8.2f} seconds'.format(__file__,os.getpid(),time_total))
