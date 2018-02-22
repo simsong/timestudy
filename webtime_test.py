@@ -147,10 +147,12 @@ def test_QueryHostEngine_Redirect():
     qhe.debug = 1
     qhe.db.debug = 1
 
+    t0 = time.time()
     qhe.queryhost(KNOWN_REDIR_SOURCE,force_record=True)
-    # Now make sure that there was a query done on KNOWN_REDIR_DEST within the past 10 seconds
+    t1 = time.time()
+    # Now make sure that there was a query done on KNOWN_REDIR_DEST during the time
     (id,diff)  = mdb.select1("select id,NOW()-qdatetime from times where host=%s order by qdatetime desc limit 1",(KNOWN_REDIR_DEST,))
-    assert diff<10
+    assert diff < (t1-t0)+4
 
 
 SOME_HOSTS=['host{}'.format(i) for i in range(1,100)] # a lot of hosts
