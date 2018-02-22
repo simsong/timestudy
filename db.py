@@ -35,6 +35,13 @@ def meminfo():
     data = open("/proc/meminfo","r").read().split("\n")
     return dict([(e[0],int(e[1].strip().split(' ')[0])) for e in [line.split(":") for line in data if ":" in line]])
 
+def log_var_names():
+    return ["host","pid","cpu","memtotal","memfree"]
+
+def log_vars():
+    mem = meminfo()
+    return [socket.gethostname(),os.getpid(),loadavg(),mem['MemTotal'],mem['MemFree']]
+
 def get_mysql_driver():
     """Return any MySQL driver that's installed"""
     try:
@@ -192,11 +199,13 @@ class mysql:
         if self.debug: print("db.COMMIT   PID:{}".format(os.getpid()))
         self.conn.commit()
 
-    def log(self,msg,level='INFO'):
-        """Save msg in the log table, return the log id"""
-        mem = meminfo()
-        c = self.execute("INSERT INTO log (host,pid,level,value,cpu,memtotal,memfree) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                         (socket.gethostname(),os.getpid(),level,msg,loadavg(),mem['MemTotal'],mem['MemFree']))
+    def log(self,value,level='INFO'):
+        """Save value in the log table, return the log id"""
+        vars = log_var_names() + ["level","value"]
+        vals = log_vars() + [level,value]
+        assert len(vars) == len(vals)
+        plac = ",".join(["%s"] * len(vars))
+        c = self.execute("INSERT INTO log (" + ",".join(vars) +" ) VALUES ( " + plac + " )",vals)
         self.conn.commit()
         return c.lastrowid
 
@@ -239,9 +248,14 @@ if __name__=="__main__":
     parser.add_argument('--config',help='specify config file',required=True)
     parser.add_argument("--dumpschema",action='store_true',help="dump schema to stdout")
     parser.add_argument("--dumpdb",action='store_true',help="dump schema to stdout")
+    parser.add_argument("--debuglog",action='store_true')
 
     args = parser.parse_args()
     config = get_mysql_config(args.config)
+
+    if args.debuglog:
+        print(log_vars())
+        print(log_var_names())
 
     if args.dumpschema:
         mysql_dump_stdout(config,'-d')

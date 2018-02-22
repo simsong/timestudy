@@ -17,7 +17,6 @@ def test_pulse_cio_gov_https():
     ret = pulse_cio_gov_analytics()
     assert 1000 < len(ret) < 100000
     assert "login.gov" in ret
-    assert "landfire.gov" in ret
 
 #def test_usg_from_nist():
 #    ret = usg_from_nist()

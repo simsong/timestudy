@@ -42,6 +42,7 @@ def getlock(fname):
 my_logger = None
 def logger_info(msg):
     """Log something to the INFO facility. Doesn't cache open connection"""
+    global my_logger
     if not my_logger:
         my_logger = logging.getLogger(__file__)
         my_logger.setLevel(logging.INFO)

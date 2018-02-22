@@ -6,6 +6,9 @@ from db import SCHEMA
 # Set this to be a config.ini that has a working "testdb"
 CONFIG_INI_TEST="config_test.ini"
 
+def test_vars():
+    assert len(db.log_var_names()) == len(db.log_vars())
+
 def get_test_database():
     assert os.path.exists(CONFIG_INI_TEST)
     config = db.get_mysql_config(CONFIG_INI_TEST)
