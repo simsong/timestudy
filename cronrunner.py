@@ -39,11 +39,13 @@ def getlock(fname):
     return fd
     
 
+my_logger = None
 def logger_info(msg):
     """Log something to the INFO facility. Doesn't cache open connection"""
-    my_logger = logging.getLogger(__file__)
-    my_logger.setLevel(logging.INFO)
-    my_logger.addHandler(logging.handlers.SysLogHandler(address = '/dev/log'))
+    if not my_logger:
+        my_logger = logging.getLogger(__file__)
+        my_logger.setLevel(logging.INFO)
+        my_logger.addHandler(logging.handlers.SysLogHandler(address = '/dev/log'))
     my_logger.info(msg)
 
 if __name__=="__main__":
@@ -60,9 +62,9 @@ if __name__=="__main__":
     # Running from cron. Make sure only one of us is running. If another is running, exit
     try:
         fd = getlock(__file__)
-        logger_info('{} PID {} acquired lock'.format(__file__,os.getpid()))
+        logger_info('{} PID {} config={} acquired lock'.format(__file__,os.getpid(),args.config))
     except RuntimeError as e:
-        logger_info('{} PID {} could not acquire lock'.format(__file__,os.getpid()))
+        logger_info('{} PID {} config={} could not acquire lock'.format(__file__,os.getpid(),args.config))
         print("{}: Could not acquire lock".format(__file__))
         exit(0)
             
