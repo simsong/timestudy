@@ -1,5 +1,3 @@
-[DEFAULT]
-threads=32
 
 [hosts]
 # Host selection
@@ -24,6 +22,8 @@ repeat=3
 # timeout is the time when we should timeout on a query
 timeout=5
 
+# How many threads to use
+threads=32
 
 [mysql]
 user=ENTER_USERNAME
