@@ -66,6 +66,13 @@ def get_mysql_driver():
 
     raise RuntimeError("Cannot find MySQL driver")
 
+def make_config_ro(config):
+    """Copy the user information to the ro user"""
+    if config['mysql']['ro_user']=='':
+        raise RuntimeError("No ro_user in config file {}".format(fname))
+    config['mysql']['user']   = config['mysql']['ro_user']
+    config['mysql']['passwd'] = config['mysql']['ro_passwd']
+
 def get_mysql_config(fname=None,mode='rw'):
     """Get a ConfigParser that's preped with the MySQL defaults. If mode=='ro', then use the ro_user and ro_passwd"""
     import configparser
@@ -83,17 +90,14 @@ def get_mysql_config(fname=None,mode='rw'):
     }
     if fname:
         config.read(fname)
-    if mode!='ro':
-        config['mysql']['user']   = config['mysql']['ro_user']
-        config['mysql']['passwd'] = config['mysql']['ro_passwd']
+    if mode=='ro':
+        make_config_ro(config)
     return config
 
 def mysql_dump_stdout(config,opts):
     """Using the config, dump MySQL schema"""
-    print('config=',config,'opts=',opts,file=sys.stderr)
     user = config["mysql"]['user']
     password = config["mysql"]['passwd']
-    print("password:",password,file=sys.stderr)
     cmd = ['mysqldump','--skip-lock-tables',
            '-h',config['mysql']['host'],'-u',user,'--pass=' + password, opts, config['mysql']['db']]
     sys.stderr.write(" ".join(cmd)+"\n")
@@ -101,8 +105,10 @@ def mysql_dump_stdout(config,opts):
 
 class mysql:
     """Encapsulate a MySQL connection"""
-    def __init__(self,config):
+    def __init__(self,config,mode='rw'):
         self.config        = config
+        if mode=='ro':
+            make_config_ro(self.config)
         self.conn          = None
         self.execute_count = 0  # count number of executes
         self.mysql_max_executes = DEFAULT_MAX_EXECUTES
