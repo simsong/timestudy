@@ -69,7 +69,7 @@ def get_mysql_driver():
 def make_config_ro(config):
     """Copy the user information to the ro user"""
     if config['mysql']['ro_user']=='':
-        raise RuntimeError("No ro_user in config file {}".format(fname))
+        raise RuntimeError("No ro_user in config file...")
     config['mysql']['user']   = config['mysql']['ro_user']
     config['mysql']['passwd'] = config['mysql']['ro_passwd']
 
