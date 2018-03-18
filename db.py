@@ -66,14 +66,23 @@ def get_mysql_driver():
 
     raise RuntimeError("Cannot find MySQL driver")
 
-def get_mysql_config(fname=None):
-    """Get a ConfigParser that's preped with the MySQL defaults"""
+def make_config_ro(config):
+    """Copy the user information to the ro user"""
+    if config['mysql']['ro_user']=='':
+        raise RuntimeError("No ro_user in config file {}".format(fname))
+    config['mysql']['user']   = config['mysql']['ro_user']
+    config['mysql']['passwd'] = config['mysql']['ro_passwd']
+
+def get_mysql_config(fname=None,mode='rw'):
+    """Get a ConfigParser that's preped with the MySQL defaults. If mode=='ro', then use the ro_user and ro_passwd"""
     import configparser
     config = configparser.ConfigParser()
     config.add_section('mysql')
     config['mysql'] = {"host":"",
                        "user":"",
                        "passwd":"",
+                       'ro_user':'',
+                       'ro_passwd':'',
                        "port":DEFAULT_MYSQL_PORT,
                        "db":DEFAULT_MYSQL_DB,
                        "mysqldump":"mysqldump",
@@ -81,22 +90,25 @@ def get_mysql_config(fname=None):
     }
     if fname:
         config.read(fname)
+    if mode=='ro':
+        make_config_ro(config)
     return config
 
 def mysql_dump_stdout(config,opts):
     """Using the config, dump MySQL schema"""
-    print('config=',config,'opts=',opts,file=sys.stderr)
     user = config["mysql"]['user']
     password = config["mysql"]['passwd']
-    print("password:",password,file=sys.stderr)
-    cmd = ['mysqldump','-h',config['mysql']['host'],'-u',user,'--pass=' + password, opts, config['mysql']['db']]
+    cmd = ['mysqldump','--skip-lock-tables',
+           '-h',config['mysql']['host'],'-u',user,'--pass=' + password, opts, config['mysql']['db']]
     sys.stderr.write(" ".join(cmd)+"\n")
     subprocess.call(cmd)
 
 class mysql:
     """Encapsulate a MySQL connection"""
-    def __init__(self,config):
+    def __init__(self,config,mode='rw'):
         self.config        = config
+        if mode=='ro':
+            make_config_ro(self.config)
         self.conn          = None
         self.execute_count = 0  # count number of executes
         self.mysql_max_executes = DEFAULT_MAX_EXECUTES
@@ -113,8 +125,8 @@ class mysql:
         try:
             self.conn = self.mysql.connect(host=self.config.get("mysql","host"),
                                            port=self.config.getint("mysql",'port'),
-                                           user=self.config.get("mysql","user"),
-                                           passwd=self.config.get("mysql","passwd"),
+                                           user=self.config.get("mysql",'user'),
+                                           passwd=self.config.get("mysql",'passwd'),
                                            db=db)
             self.conn.cursor().execute("set innodb_lock_wait_timeout=20")
             self.conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")

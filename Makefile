@@ -19,10 +19,10 @@ top-100m.csv:
 	/bin/rm -f top-1m.csv.zip
 
 schema.sql: Makefile webtime.py db.py
-	python3 db.py --config config_dreamhost.ini --dumpschema | sed 's/ AUTO_INCREMENT=[0-9]*//g' > schema.sql
+	python3 db.py --config $(CONFIG) --dumpschema | sed 's/ AUTO_INCREMENT=[0-9]*//g' > schema.sql
 
 backup:
-	@python3 db.py --dumpdb | gzip -9 >  database.sql.gz
+	@python3 db.py --config $(CONFIG) --dumpdb | gzip -9 >  database.sql.gz
 
 
 pub:

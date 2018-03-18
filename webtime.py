@@ -184,13 +184,17 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
         seq = None
 
     import requests,socket,email,sys,random
+
+
     for i in range(config.getint('webtime','retry')):
         random_str = "".join(chr(random.randint(97,122)) for _ in range(8))
         url = "{}://{}/webtime_experiment_{}?i={}&seq={}".format(protocol,qhost,random_str,i,seq)
         s = requests.Session()
         try:
+            import urllib3
+            urllib3.disable_warnings()
             t0 = time.time()
-            r = s.head(url,timeout=config.getint('webtime','timeout'),headers=headers,allow_redirects=False)
+            r = s.head(url,timeout=config.getint('webtime','timeout'),headers=headers,allow_redirects=False,verify=False)
             t1 = time.time()
         except requests.exceptions.ConnectTimeout as e:
             db.log("error:connect-timeout host:{} ipaddr:{}".format(qhost,ipaddr),level='ERR')
@@ -454,7 +458,7 @@ if __name__=="__main__":
     # Determine how many entries in the database at start
     if args.debug:
         host_count = len(hosts)
-        print("Total Hosts: {:,}".format(host_count))
+        print("Total Hosts: {:,}".format(len(host_count)))
         (qcount0,ecount0,wtcount0) = dbc.select1("select sum(qcount),sum(ecount),sum(wtcount) from dated")
         print("Initial stats:  queries: {:,}   errors: {:,}   wrong times: {:,}".format(qcount0,ecount0,wtcount0))
 
@@ -462,6 +466,7 @@ if __name__=="__main__":
     threads = config.getint('webtime','threads',fallback=DEFAULT_THREADS)
     if args.threads:
         threads = args.threads
+    dbc.log("Total Hosts: {:,}  Threads: {}".format(len(hosts),threads))
     if threads==1:
         [qhe.queryhost(qhost) for u in hosts]
     else:
