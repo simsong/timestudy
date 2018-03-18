@@ -459,7 +459,7 @@ if __name__=="__main__":
         print("Initial stats:  queries: {:,}   errors: {:,}   wrong times: {:,}".format(qcount0,ecount0,wtcount0))
 
     # Query the costs, either locally or in the threads
-    threads = config.getint('DEFAULT','threads',fallback=DEFAULT_THREADS)
+    threads = config.getint('webtime','threads',fallback=DEFAULT_THREADS)
     if args.threads:
         threads = args.threads
     if threads==1:
