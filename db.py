@@ -66,14 +66,16 @@ def get_mysql_driver():
 
     raise RuntimeError("Cannot find MySQL driver")
 
-def get_mysql_config(fname=None):
-    """Get a ConfigParser that's preped with the MySQL defaults"""
+def get_mysql_config(fname=None,mode='rw'):
+    """Get a ConfigParser that's preped with the MySQL defaults. If mode=='ro', then use the ro_user and ro_passwd"""
     import configparser
     config = configparser.ConfigParser()
     config.add_section('mysql')
     config['mysql'] = {"host":"",
                        "user":"",
                        "passwd":"",
+                       'ro_user':'',
+                       'ro_passwd':'',
                        "port":DEFAULT_MYSQL_PORT,
                        "db":DEFAULT_MYSQL_DB,
                        "mysqldump":"mysqldump",
@@ -81,6 +83,9 @@ def get_mysql_config(fname=None):
     }
     if fname:
         config.read(fname)
+    if mode!='ro':
+        config['mysql']['user']   = config['mysql']['ro_user']
+        config['mysql']['passwd'] = config['mysql']['ro_passwd']
     return config
 
 def mysql_dump_stdout(config,opts):
@@ -114,8 +119,8 @@ class mysql:
         try:
             self.conn = self.mysql.connect(host=self.config.get("mysql","host"),
                                            port=self.config.getint("mysql",'port'),
-                                           user=self.config.get("mysql","user"),
-                                           passwd=self.config.get("mysql","passwd"),
+                                           user=self.config.get("mysql",'user'),
+                                           passwd=self.config.get("mysql",'passwd'),
                                            db=db)
             self.conn.cursor().execute("set innodb_lock_wait_timeout=20")
             self.conn.cursor().execute("SET tx_isolation='READ-COMMITTED'")

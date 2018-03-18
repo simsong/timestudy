@@ -83,7 +83,7 @@ if __name__=="__main__":
 
     args = parser.parse_args()
     config = db.get_mysql_config(args.config)
-    dbc    = db.mysql(config)
+    dbc    = db.mysql(config,mode='ro')
 
     if args.debug:
         dbc.debug = args.debug
