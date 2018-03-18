@@ -184,7 +184,6 @@ class Plotter:
     def get_data(self):
         # Get all of the bad reads at once, break into individual ipaddresses if needed
         # 
-        t0 = time.time()
         cmd = "SELECT qdatetime, ipaddr, offset, qduration FROM times WHERE host=%s and abs(offset)>=%s ORDER BY qdatetime"
         for (qdatetime, ipaddr, offset, qduration) in dbc.execute(cmd, (self.host,MIN_OFFSET)):
             self.times.append( Times(ipaddr, qdatetime, offset, qduration) )
@@ -192,9 +191,6 @@ class Plotter:
 
         for (ipaddr, qdate, qcount, ecount) in dbc.execute("select ipaddr,qdate,qcount,ecount from dated where host=%s ORDER BY qdate", (self.host,)):
             self.dateds.append( Dated(ipaddr, qdate, qcount, ecount) )
-        t1 = time.time()
-        if args.verbose:
-            print("  get_data={:.4}s".format(t1-t0))
 
     def total_queries(self):
         return sum([d.qcount for d in self.dateds])
@@ -319,15 +315,15 @@ def page_by_host(dbc, outdir):
         host = '.'.join(list(reversed(host_reversed.split('.'))))
 
         p = Plotter(dbc,host)
-        print("   made Plotter. tdelta=",time.time()-t0)
+        print("   made Plotter. elapsed time: {:.4}".format(time.time()-t0))
         p.get_data()
-        print("   got data. tdelta=",time.time()-t0)
+        print("   got data.     elapsed time: {:.4}".format(time.time()-t0))
         png_name = p.png_name(outdir)
         if not os.path.exists(png_name):
             p.make_plot(outdir)
         if os.path.exists(png_name):
             p.make_html(htmlfile)
-        print("   done. tdelta=",time.time()-t0)
+        print("   done with plot.       time: {:.4}".format(time.time()-t0))
 
     htmlfile.write("</table>")
     htmlfile.write("</html>")
