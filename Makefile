@@ -28,7 +28,7 @@ backup:
 pub:
 	@echo Make and publish all the graphs
 	mkdir -p plots/hostplots
-	python3 graph_gen_html_page.py  --verbose --config=config_default.ini
+	python3 graph_gen_html_page.py  --verbose --config=$(CONFIG)
 	sudo mkdir -p /var/www/html/plots/hostplots
 	sudo chown -R `whoami` /var/www/html/plots
 	mv -f plots/*.html /var/www/html/plots/

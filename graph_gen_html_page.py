@@ -185,12 +185,12 @@ class Plotter:
         # Get all of the bad reads at once, break into individual ipaddresses if needed
         # 
         t0 = time.time()
-        cmd = "SELECT qdatetime, ipaddr, offset, qduration FROM times WHERE host=%s and abs(offset)>=%s GROUP BY qdatetime ORDER BY qdatetime"
+        cmd = "SELECT qdatetime, ipaddr, offset, qduration FROM times WHERE host=%s and abs(offset)>=%s ORDER BY qdatetime"
         for (qdatetime, ipaddr, offset, qduration) in dbc.execute(cmd, (self.host,MIN_OFFSET)):
             self.times.append( Times(ipaddr, qdatetime, offset, qduration) )
             self.ips[ipaddr] += 1
 
-        for (ipaddr, qdate, qcount, ecount) in dbc.execute("select ipaddr,qdate,qcount,ecount from dated where host=%s GROUP BY qdate ORDER BY qdate", (self.host,)):
+        for (ipaddr, qdate, qcount, ecount) in dbc.execute("select ipaddr,qdate,qcount,ecount from dated where host=%s ORDER BY qdate", (self.host,)):
             self.dateds.append( Dated(ipaddr, qdate, qcount, ecount) )
         t1 = time.time()
         if args.verbose:

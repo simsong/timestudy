@@ -73,3 +73,4 @@ plots/
 *.ini
 .pytest_cache
 #*
+config.bash
