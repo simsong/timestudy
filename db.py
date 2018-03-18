@@ -89,7 +89,8 @@ def mysql_dump_stdout(config,opts):
     user = config["mysql"]['user']
     password = config["mysql"]['passwd']
     print("password:",password,file=sys.stderr)
-    cmd = ['mysqldump','-h',config['mysql']['host'],'-u',user,'--pass=' + password, opts, config['mysql']['db']]
+    cmd = ['mysqldump','--skip-lock-tables',
+           '-h',config['mysql']['host'],'-u',user,'--pass=' + password, opts, config['mysql']['db']]
     sys.stderr.write(" ".join(cmd)+"\n")
     subprocess.call(cmd)
 

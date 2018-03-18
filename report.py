@@ -21,7 +21,8 @@ def gen_report(dbc,smin,smax,desc):
     """Given a database connection, generate a report for those with an offset of smin..smax"""
 
     # This query appears to need to use HAVING instead of WHERE because it is based on MAX(ABS(offset))
-    cmd = "SELECT host,MAX(ABS(offset)) AS oset FROM times WHERE abs(offset)>={} and abs(offset)<={} GROUP BY host HAVING TRUE ".format(smin,smax)
+    cmd = "SELECT host,MAX(ABS(offset)) AS oset FROM times " \
+          "WHERE abs(offset)>={} and abs(offset)<={} GROUP BY host HAVING TRUE ".format(smin,smax)
     cmd += " order by host "
     cmd += " LIMIT {}".format(MAX_HOST_REPORT)
     cursor = dbc.execute(cmd)
@@ -78,6 +79,7 @@ if __name__=="__main__":
     parser.add_argument("--verbose",action="store_true",help="output to STDOUT")
     parser.add_argument("--config",help="config file",required=True)
     parser.add_argument("--host",help="Specify a host")
+    parser.add_argument("report",nargs="*",help="Specify which reports are requested. options: counts hosts size offset all")
 
     args = parser.parse_args()
     config = db.get_mysql_config(args.config)
@@ -88,35 +90,56 @@ if __name__=="__main__":
         print("debug mode")
 
     print("Report generated: {}".format(datetime.datetime.now().isoformat()))
-    print("Database size:")
-    for (table,) in dbc.execute("show tables").fetchall():
-        (count,) = dbc.select1("select count(1) from {}".format(table))
-        print("Table {:20} {:10,} rows".format(table,count))
-    print("\n")
 
-    #
-    # 
-    # Overall stats
-    #
-    cmd = "select count(distinct host), count(distinct ipaddr),min(qdate),max(qdate),sum(qcount)"+\
-          "from dated "
-    (hostCount,ipaddrCount,date_min,date_max,sumQcount) = dbc.select1(cmd)
+    if not args.report:
+        print("No report specified; running counts")
+        args.report = ['counts']
 
-    print("Total number of hosts examined: {:,}  ({:,} IP addresses)".format(hostCount,ipaddrCount))
-    print("Dates of study: {} to {}".format(date_min,date_max))
-    print("Number of time measurements: {:,}".format(sumQcount))
 
-    cmd = "select count(distinct host), count(distinct ipaddr) from dated where wtcount>0 "
-    
-    (badHosts,badIpaddrs) = dbc.select1(cmd)
+    if 'counts' in args.report:
+        cmd = "select min(qdate),max(qdate) from dated "
+        (date_min,date_max) = dbc.select1(cmd)
 
-    print("Number of hosts with at least one incorrect time measurement: {:,} ({:.2f}%)".
-          format(badHosts,badHosts*100.0/hostCount))
-    print("Number of IP addresses with at least one incorrect time measurement: {:,} ({:.2f}%)".
-          format(badIpaddrs,badIpaddrs*100.0/ipaddrCount))
+        print("Dates of study: {} to {} ({})".format(date_min,date_max,date_max-date_min))
 
-    gen_report(dbc,1,60,"1 to 59 seconds")
-    gen_report(dbc,60,3600,"1 minute to 1 hour")
-    gen_report(dbc,3600,60*60*24,"1 hour to 1 day")
-    gen_report(dbc,60*60*24,60*60*24*31,"1 day to 1 month")
-    gen_report(dbc,60*60*24*31,0,"more than a month")
+        cmd = "select host,qdatetime,now()-qdatetime from times order by qdatetime desc limit 1"
+        (host,most_recent,seconds) = dbc.select1(cmd)
+        print("Most recent wrong measurement: {}  ({} seconds ago) ({})".format(most_recent,seconds,host))
+
+        for level in ['INFO','ERR']:
+            print("Last 6 {} log messages:".format(level))
+            for (modified,value) in dbc.execute("select modified,value from log where level=%s order by modified desc limit 6",(level,)):
+                print(modified,value)
+            print("\n")
+
+    if 'hosts' in args.report:
+        cmd = "select count(distinct host), count(distinct ipaddr), sum(qcount) from dated "
+        (hostCount,ipaddrCount,sumQcount) = dbc.select1(cmd)
+
+        print("Total number of distinct hosts examined: {:,}  ({:,} IP addresses)".format(hostCount,ipaddrCount))
+        print("Number of time measurements: {:,}".format(sumQcount))
+      
+
+    if 'size' in args.report:
+        print("Database size:")
+        for (table,) in dbc.execute("show tables").fetchall():
+            (count,) = dbc.select1("select count(1) from {}".format(table))
+            print("Table {:20} {:10,} rows".format(table,count))
+        print("\n")
+
+
+    if 'offset' in args.report:
+        cmd = "select count(distinct host), count(distinct ipaddr) from dated where wtcount>0 "
+
+        (badHosts,badIpaddrs) = dbc.select1(cmd)
+
+        print("Number of hosts with at least one incorrect time measurement: {:,} ({:.2f}%)".
+              format(badHosts,badHosts*100.0/hostCount))
+        print("Number of IP addresses with at least one incorrect time measurement: {:,} ({:.2f}%)".
+              format(badIpaddrs,badIpaddrs*100.0/ipaddrCount))
+
+        gen_report(dbc,1,60,"1 to 59 seconds")
+        gen_report(dbc,60,3600,"1 minute to 1 hour")
+        gen_report(dbc,3600,60*60*24,"1 hour to 1 day")
+        gen_report(dbc,60*60*24,60*60*24*31,"1 day to 1 month")
+        gen_report(dbc,60*60*24*31,0,"more than a month")
