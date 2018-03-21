@@ -107,9 +107,10 @@ if __name__=="__main__":
         print("Most recent wrong measurement: {}  ({} seconds ago) ({})".format(most_recent,seconds,host))
 
         for level in ['INFO','ERR']:
-            print("Last 6 {} log messages:".format(level))
-            for (modified,value) in dbc.execute("select modified,value from log where level=%s order by modified desc limit 6",(level,)):
-                print(modified,value)
+            import tabulate
+            print("Last 10 {} log messages:".format(level))
+            print(tabulate.tabulate(dbc.execute("select modified,cpu,memfree,value from log where level=%s order by modified desc limit 10",(level,)).fetchall(),
+                                    headers=['date','cpu','memfree','message']))
             print("\n")
 
     if 'hosts' in args.report:
