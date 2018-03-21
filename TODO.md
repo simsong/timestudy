@@ -1,3 +1,15 @@
+Short list of things we agreed to do, March 16th, 2018:
+- [ ] rate limiting on the good sites
+- [ ] EDUs
+- [ ] Better backup of database
+- [ ] NTP hosts
+- [ ] Set up a system at NIST
+- [ ] Query interface
+- [ ] Metadata in the database to find problems
+- [ ] Did anything happen on DST?
+
+
+
 Database Enhancement
 * make it so that we get ipaddr and cnames at the same time by using getipbyhostname_ex. Remove get_cname()
 * Transparent databsae upgrades? We probably don't have enough out there yet. 
@@ -24,12 +36,12 @@ https://github.com/Hipo/university-domains-list
 
 * Query interface:
   • stats DB by:
-    • Tags
-      • Offset range
-        • RTT range
-          • %zeros etc
-            • # queries etc
-              •  
+  • Tags
+  • Offset range
+  • RTT range
+  • %zeros etc
+  • # queries etc
+
 * Demonstrating that the server is not drifting, by regularly querying a time standard host.
 
 10a - First we see the number of errors in the last WEEK (tunable) and the number of queries today
