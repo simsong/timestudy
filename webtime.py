@@ -17,6 +17,11 @@ import struct
 import json
 from cronrunner import logger_info
 
+# https://urllib3.readthedocs.io/en/latest/advanced-usage.html#ssl-warnings
+import urllib3
+urllib3.disable_warnings()
+
+
 MIN_TIME = 3.0                          # Don't record more off than this
 DEFAULT_RETRY_COUNT = 3                 # how many times to retry a query
 DEFAULT_TIMEOUT = 5                     # default timeout, in seconds
@@ -191,8 +196,6 @@ def WebTimeExp(*,qhost,ipaddr,cname,protocol,config,db):
         url = "{}://{}/webtime_experiment_{}?i={}&seq={}".format(protocol,qhost,random_str,i,seq)
         s = requests.Session()
         try:
-            import urllib3
-            urllib3.disable_warnings()
             t0 = time.time()
             r = s.head(url,timeout=config.getint('webtime','timeout'),headers=headers,allow_redirects=False,verify=False)
             t1 = time.time()
@@ -268,7 +271,11 @@ class QueryHostEngine:
         """Perform a query of qhost; return the WebTime object if the experiment was successful."""
 
         # Update the query count for the hostname
-        self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
+        import mysql.connector.errors
+        try:
+            self.db.execute("UPDATE hosts SET qdatetime=now() WHERE host=%s",(qhost,))
+        except mysql.connector.errors.InternalError:
+            print("webtime update failed where host={}".format(qhost))
 
         cmd = "UPDATE dated SET qlast=%s,qcount=qcount+1"
         wt = WebTimeExp(qhost=qhost,ipaddr=ipaddr,cname=cname,protocol=protocol,config=self.config,db=self.db)
