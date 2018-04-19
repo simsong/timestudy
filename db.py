@@ -66,6 +66,7 @@ def get_mysql_driver():
 
     raise RuntimeError("Cannot find MySQL driver")
 
+<<<<<<< Updated upstream
 def make_config_ro(config):
     """Copy the user information to the ro user"""
     if config['mysql']['ro_user']=='':
@@ -73,6 +74,8 @@ def make_config_ro(config):
     config['mysql']['user']   = config['mysql']['ro_user']
     config['mysql']['passwd'] = config['mysql']['ro_passwd']
 
+=======
+>>>>>>> Stashed changes
 def get_mysql_config(fname=None,mode='rw'):
     """Get a ConfigParser that's preped with the MySQL defaults. If mode=='ro', then use the ro_user and ro_passwd"""
     import configparser
@@ -90,8 +93,14 @@ def get_mysql_config(fname=None,mode='rw'):
     }
     if fname:
         config.read(fname)
+<<<<<<< Updated upstream
     if mode=='ro':
         make_config_ro(config)
+=======
+    if mode!='ro':
+        config['mysql']['user']   = config['mysql']['ro_user']
+        config['mysql']['passwd'] = config['mysql']['ro_passwd']
+>>>>>>> Stashed changes
     return config
 
 def mysql_dump_stdout(config,opts):
