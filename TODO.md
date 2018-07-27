@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 Short list of things we agreed to do, March 16th, 2018:
 - [ ] rate limiting on the good sites
 - [ ] EDUs
@@ -12,10 +10,6 @@ Short list of things we agreed to do, March 16th, 2018:
 
 
 
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 Database Enhancement
 * make it so that we get ipaddr and cnames at the same time by using getipbyhostname_ex. Remove get_cname()
 * Transparent databsae upgrades? We probably don't have enough out there yet. 
@@ -42,27 +36,18 @@ https://github.com/Hipo/university-domains-list
 
 * Query interface:
   • stats DB by:
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
   • Tags
   • Offset range
   • RTT range
   • %zeros etc
   • # queries etc
 
-=======
-=======
->>>>>>> Stashed changes
     • Tags
       • Offset range
         • RTT range
           • %zeros etc
             • # queries etc
               •  
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 * Demonstrating that the server is not drifting, by regularly querying a time standard host.
 
 10a - First we see the number of errors in the last WEEK (tunable) and the number of queries today
