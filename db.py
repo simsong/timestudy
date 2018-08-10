@@ -66,9 +66,6 @@ def get_mysql_driver():
 
     raise RuntimeError("Cannot find MySQL driver")
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 def make_config_ro(config):
     """Copy the user information to the ro user"""
     if config['mysql']['ro_user']=='':
